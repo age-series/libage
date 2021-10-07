@@ -20,7 +20,6 @@ plugins {
     java
     kotlin("jvm") version "1.5.10"
     jacoco
-    id("com.github.johnrengelman.shadow") version "6.1.0"
     idea
     id("org.jetbrains.dokka") version "1.4.30"
 }
@@ -31,7 +30,7 @@ dependencies {
     testImplementation("org.assertj", "assertj-core", "3.19.0")
     testImplementation("org.junit.jupiter", "junit-jupiter-api", "5.7.2")
     testRuntimeOnly("org.junit.jupiter", "junit-jupiter-engine", "5.7.2")
-    implementation(kotlin("stdlib-jdk8"))
+    implementation("org.jetbrains.kotlin", "kotlin-stdlib", "1.5.31")
 }
 
 tasks {
@@ -50,7 +49,6 @@ tasks {
             showExceptions = true
             showCauses = true
             showStackTraces = true
-            // TODO: add the other envvars that can trigger debug output
             showStandardStreams = System.getenv("MODS_ELN_DEBUG") != ""
 
             // At log-level INFO or DEBUG, print everything.

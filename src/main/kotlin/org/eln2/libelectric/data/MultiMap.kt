@@ -1,4 +1,4 @@
-package org.eln2.data
+package org.eln2.libelectric.data
 
 /**
  * A helper class for representing a mapping as a Map.Entry.

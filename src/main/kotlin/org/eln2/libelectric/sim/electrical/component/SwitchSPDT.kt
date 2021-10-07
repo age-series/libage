@@ -1,9 +1,9 @@
-package org.eln2.sim.electrical.component
+package org.eln2.libelectric.sim.electrical.component
 /*
 
-import org.eln2.sim.electrical.mna.NEGATIVE
-import org.eln2.sim.electrical.mna.POSITIVE
-import org.eln2.sim.electrical.mna.component.Component
+import org.eln2.libelectric.sim.electrical.mna.NEGATIVE
+import org.eln2.libelectric.sim.electrical.mna.POSITIVE
+import org.eln2.libelectric.sim.electrical.mna.component.Component
 
 class SwitchSPDT: Component() {
     val sw1 = Switch()

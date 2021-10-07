@@ -1,4 +1,4 @@
-package org.eln2.sim
+package org.eln2.libelectric.sim
 
 /**
  * An interface that represents a process.

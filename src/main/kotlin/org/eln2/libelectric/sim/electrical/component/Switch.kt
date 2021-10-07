@@ -1,6 +1,6 @@
-package org.eln2.sim.electrical.component
+package org.eln2.libelectric.sim.electrical.component
 
-import org.eln2.sim.electrical.mna.component.Resistor
+import org.eln2.libelectric.sim.electrical.mna.component.Resistor
 
 /**
  * Implements a simple SPST (Single Pole, Single Throw) switch.

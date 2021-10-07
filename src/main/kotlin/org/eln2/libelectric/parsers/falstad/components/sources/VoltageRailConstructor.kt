@@ -1,9 +1,9 @@
-package org.eln2.parsers.falstad.components.sources
+package org.eln2.libelectric.parsers.falstad.components.sources
 
-import org.eln2.parsers.falstad.CCData
-import org.eln2.parsers.falstad.PoleConstructor
-import org.eln2.sim.electrical.mna.component.Component
-import org.eln2.sim.electrical.mna.component.VoltageSource
+import org.eln2.libelectric.parsers.falstad.CCData
+import org.eln2.libelectric.parsers.falstad.PoleConstructor
+import org.eln2.libelectric.sim.electrical.mna.component.Component
+import org.eln2.libelectric.sim.electrical.mna.component.VoltageSource
 
 /**
  * Voltage Rail Constructor

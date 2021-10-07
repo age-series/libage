@@ -1,4 +1,4 @@
-package org.eln2.space
+package org.eln2.libelectric.space
 
 import kotlin.math.abs
 
@@ -355,9 +355,11 @@ data class SurfacePos(override val vec3i: Vec3i, val face: PlanarFace) : Locator
                 val delta = other.vec3i - vec3i
                 val other_norm = delta + face.normal
                 println(
-                    "SP.cC: L1=2: delta $delta other_norm $other_norm face.normal ${face.normal} this.vec $vec3i other.vec ${other.vec3i} other.face ${other.face} PF.fN(on) ${PlanarFace.fromNormal(
-                        other_norm
-                    )}"
+                    "SP.cC: L1=2: delta $delta other_norm $other_norm face.normal ${face.normal} this.vec $vec3i other.vec ${other.vec3i} other.face ${other.face} PF.fN(on) ${
+                        PlanarFace.fromNormal(
+                            other_norm
+                        )
+                    }"
                 )
                 other.face == PlanarFace.fromNormal(other_norm)
             }

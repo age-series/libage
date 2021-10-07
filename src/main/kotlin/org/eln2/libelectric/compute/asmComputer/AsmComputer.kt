@@ -1,21 +1,21 @@
-package org.eln2.compute.asmComputer
+package org.eln2.libelectric.compute.asmComputer
 
-import org.eln2.compute.asmComputer.operators.AddD
-import org.eln2.compute.asmComputer.operators.AddI
-import org.eln2.compute.asmComputer.operators.CodeSwitch
-import org.eln2.compute.asmComputer.operators.CopyStringPart
-import org.eln2.compute.asmComputer.operators.Jump
-import org.eln2.compute.asmComputer.operators.JumpEquals
-import org.eln2.compute.asmComputer.operators.JumpGreaterEquals
-import org.eln2.compute.asmComputer.operators.JumpGreaterThan
-import org.eln2.compute.asmComputer.operators.JumpLessEquals
-import org.eln2.compute.asmComputer.operators.JumpLessThan
-import org.eln2.compute.asmComputer.operators.Label
-import org.eln2.compute.asmComputer.operators.Move
-import org.eln2.compute.asmComputer.operators.NoOp
-import org.eln2.compute.asmComputer.operators.StringLength
-import org.eln2.compute.asmComputer.operators.SubD
-import org.eln2.compute.asmComputer.operators.SubI
+import org.eln2.libelectric.compute.asmComputer.operators.AddD
+import org.eln2.libelectric.compute.asmComputer.operators.AddI
+import org.eln2.libelectric.compute.asmComputer.operators.CodeSwitch
+import org.eln2.libelectric.compute.asmComputer.operators.CopyStringPart
+import org.eln2.libelectric.compute.asmComputer.operators.Jump
+import org.eln2.libelectric.compute.asmComputer.operators.JumpEquals
+import org.eln2.libelectric.compute.asmComputer.operators.JumpGreaterEquals
+import org.eln2.libelectric.compute.asmComputer.operators.JumpGreaterThan
+import org.eln2.libelectric.compute.asmComputer.operators.JumpLessEquals
+import org.eln2.libelectric.compute.asmComputer.operators.JumpLessThan
+import org.eln2.libelectric.compute.asmComputer.operators.Label
+import org.eln2.libelectric.compute.asmComputer.operators.Move
+import org.eln2.libelectric.compute.asmComputer.operators.NoOp
+import org.eln2.libelectric.compute.asmComputer.operators.StringLength
+import org.eln2.libelectric.compute.asmComputer.operators.SubD
+import org.eln2.libelectric.compute.asmComputer.operators.SubI
 
 /**
  * AsmComputer

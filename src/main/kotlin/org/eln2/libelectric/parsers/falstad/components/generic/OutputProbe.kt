@@ -1,10 +1,10 @@
-package org.eln2.parsers.falstad.components.generic
+package org.eln2.libelectric.parsers.falstad.components.generic
 
-import org.eln2.parsers.falstad.CCData
-import org.eln2.parsers.falstad.IComponentConstructor
-import org.eln2.parsers.falstad.PinRef
-import org.eln2.parsers.falstad.PosSet
-import org.eln2.sim.electrical.mna.component.Resistor
+import org.eln2.libelectric.parsers.falstad.CCData
+import org.eln2.libelectric.parsers.falstad.IComponentConstructor
+import org.eln2.libelectric.parsers.falstad.PinRef
+import org.eln2.libelectric.parsers.falstad.PosSet
+import org.eln2.libelectric.sim.electrical.mna.component.Resistor
 
 /**
  * Output Probe

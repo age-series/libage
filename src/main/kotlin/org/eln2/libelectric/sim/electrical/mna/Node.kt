@@ -1,8 +1,8 @@
-package org.eln2.sim.electrical.mna
+package org.eln2.libelectric.sim.electrical.mna
 
-import org.eln2.debug.dprintln
-import org.eln2.sim.electrical.mna.component.Component
-import org.eln2.data.DisjointSet
+import org.eln2.libelectric.debug.dprintln
+import org.eln2.libelectric.sim.electrical.mna.component.Component
+import org.eln2.libelectric.data.DisjointSet
 
 /**
  * A "node", in MNA; the non-resistive connections between [Component]s. All [Pin]s which are connected share a single instance of Node.

@@ -1,8 +1,8 @@
-package org.eln2.compute.asmComputer.operators
+package org.eln2.libelectric.compute.asmComputer.operators
 
-import org.eln2.compute.asmComputer.AsmComputer
-import org.eln2.compute.asmComputer.CState
-import org.eln2.compute.asmComputer.Operator
+import org.eln2.libelectric.compute.asmComputer.AsmComputer
+import org.eln2.libelectric.compute.asmComputer.CState
+import org.eln2.libelectric.compute.asmComputer.Operator
 
 /**
  * subi: subtracts integers

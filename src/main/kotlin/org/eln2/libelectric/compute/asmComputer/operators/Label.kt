@@ -1,7 +1,7 @@
-package org.eln2.compute.asmComputer.operators
+package org.eln2.libelectric.compute.asmComputer.operators
 
-import org.eln2.compute.asmComputer.AsmComputer
-import org.eln2.compute.asmComputer.Operator
+import org.eln2.libelectric.compute.asmComputer.AsmComputer
+import org.eln2.libelectric.compute.asmComputer.Operator
 
 /**
  * Label - just a label! It requires a literal text string, eg `labl "ThisThing"`. Costs 1 tick because it does.

@@ -1,4 +1,4 @@
-package org.eln2.compute.uarchComputer
+package org.eln2.libelectric.compute.uarchComputer
 
 /**
  * An interface representing a set of IO pins.

@@ -1,12 +1,12 @@
-package org.eln2.sim.electrical.mna
+package org.eln2.libelectric.sim.electrical.mna
 
-import org.eln2.debug.dprintln
-import org.eln2.debug.mnaPrintln
-import org.eln2.sim.electrical.mna.component.CurrentSource
-import org.eln2.sim.electrical.mna.component.VoltageSource
-import org.eln2.sim.electrical.mna.component.Resistor
-import org.eln2.sim.electrical.mna.component.Capacitor
-import org.eln2.sim.electrical.mna.component.Inductor
+import org.eln2.libelectric.debug.dprintln
+import org.eln2.libelectric.debug.mnaPrintln
+import org.eln2.libelectric.sim.electrical.mna.component.CurrentSource
+import org.eln2.libelectric.sim.electrical.mna.component.VoltageSource
+import org.eln2.libelectric.sim.electrical.mna.component.Resistor
+import org.eln2.libelectric.sim.electrical.mna.component.Capacitor
+import org.eln2.libelectric.sim.electrical.mna.component.Inductor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import kotlin.math.abs

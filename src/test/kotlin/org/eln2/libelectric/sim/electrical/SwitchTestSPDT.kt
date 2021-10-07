@@ -1,12 +1,12 @@
-package org.eln2.sim.electrical
+package org.eln2.libelectric.sim.electrical
 /*
-import org.eln2.debug.mnaPrintln
+import org.eln2.libelectric.debug.mnaPrintln
 import org.eln2.sim.electrical.component.PinsSPDT
 import org.eln2.sim.electrical.component.SwitchSPDT
-import org.eln2.sim.electrical.mna.Circuit
-import org.eln2.sim.electrical.mna.NEGATIVE
-import org.eln2.sim.electrical.mna.POSITIVE
-import org.eln2.sim.electrical.mna.component.VoltageSource
+import org.eln2.libelectric.sim.electrical.mna.Circuit
+import org.eln2.libelectric.sim.electrical.mna.NEGATIVE
+import org.eln2.libelectric.sim.electrical.mna.POSITIVE
+import org.eln2.libelectric.sim.electrical.mna.component.VoltageSource
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 

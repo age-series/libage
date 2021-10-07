@@ -1,12 +1,12 @@
-package org.eln2.sim.electrical.mna.component
+package org.eln2.libelectric.sim.electrical.mna.component
 
-import org.eln2.data.DisjointSet
-import org.eln2.debug.dprintln
-import org.eln2.sim.electrical.mna.Circuit
-import org.eln2.sim.electrical.mna.GroundNode
-import org.eln2.sim.electrical.mna.IDetail
-import org.eln2.sim.electrical.mna.Node
-import org.eln2.sim.electrical.mna.VSource
+import org.eln2.libelectric.data.DisjointSet
+import org.eln2.libelectric.debug.dprintln
+import org.eln2.libelectric.sim.electrical.mna.Circuit
+import org.eln2.libelectric.sim.electrical.mna.GroundNode
+import org.eln2.libelectric.sim.electrical.mna.IDetail
+import org.eln2.libelectric.sim.electrical.mna.Node
+import org.eln2.libelectric.sim.electrical.mna.VSource
 
 /**
 * The Exception thrown when a [Component]'s [Circuit] is mutated during [Component.connect].

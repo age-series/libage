@@ -1,10 +1,10 @@
-package org.eln2.compute.asmComputer.operators
+package org.eln2.libelectric.compute.asmComputer.operators
 
-import org.eln2.compute.asmComputer.AsmComputer
-import org.eln2.compute.asmComputer.CState
-import org.eln2.compute.asmComputer.IntRegister
-import org.eln2.compute.asmComputer.Operator
-import org.eln2.compute.asmComputer.StringRegister
+import org.eln2.libelectric.compute.asmComputer.AsmComputer
+import org.eln2.libelectric.compute.asmComputer.CState
+import org.eln2.libelectric.compute.asmComputer.IntRegister
+import org.eln2.libelectric.compute.asmComputer.Operator
+import org.eln2.libelectric.compute.asmComputer.StringRegister
 
 /**
  * String Length - Literally just copies the length of a string into an int register of your choosing.

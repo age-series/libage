@@ -1,4 +1,4 @@
-package org.eln2.space
+package org.eln2.libelectric.space
 
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test

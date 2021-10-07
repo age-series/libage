@@ -1,6 +1,8 @@
 @file:Suppress("unused")
 
-package org.eln2.debug
+package org.eln2.libelectric.debug
+
+import java.util.*
 
 /**
  * Debug_Flags: List of acceptable flags that will enable the DEBUG flag from the system environment.
@@ -26,7 +28,7 @@ var DEBUG =
     (
         System.getenv().filterKeys { key ->
             DEBUG_FLAGS.any {
-                it.toLowerCase().replace('.', '_') == key.toLowerCase()
+                it.lowercase(Locale.getDefault()).replace('.', '_') == key.lowercase(Locale.getDefault())
             }
         } +
             System.getProperties().filterKeys { key ->

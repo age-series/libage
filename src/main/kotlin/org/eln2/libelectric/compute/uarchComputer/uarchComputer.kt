@@ -1,4 +1,4 @@
-package org.eln2.compute.uarchComputer
+package org.eln2.libelectric.compute.uarchComputer
 
 /**
  * uarchComputer - A basic computer with an ALU, FPU, and some load/store instructions.

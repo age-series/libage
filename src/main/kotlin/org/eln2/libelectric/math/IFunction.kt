@@ -1,4 +1,4 @@
-package org.eln2.math
+package org.eln2.libelectric.math
 
 /**
  * IFunction

@@ -1,4 +1,4 @@
-package org.eln2.parsers
+package org.eln2.libelectric.parsers
 
 /**
 Gnuplot Parser Class

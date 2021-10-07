@@ -1,7 +1,7 @@
-package org.eln2.parsers.falstad.components.sources
+package org.eln2.libelectric.parsers.falstad.components.sources
 
-import org.eln2.parsers.falstad.CCData
-import org.eln2.parsers.falstad.IComponentConstructor
+import org.eln2.libelectric.parsers.falstad.CCData
+import org.eln2.libelectric.parsers.falstad.IComponentConstructor
 
 /**
  * Ground Constructor

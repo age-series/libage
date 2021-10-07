@@ -1,4 +1,4 @@
-package org.eln2.sim.thermal
+package org.eln2.libelectric.sim.thermal
 
 /**
  * @param outerSurfaceArea The surface area (m^2) of anything that is not a surface that conducts with a Thermal Node

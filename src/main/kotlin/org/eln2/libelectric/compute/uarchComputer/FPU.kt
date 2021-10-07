@@ -1,4 +1,4 @@
-package org.eln2.compute.uarchComputer
+package org.eln2.libelectric.compute.uarchComputer
 
 import kotlin.math.cos
 import kotlin.math.exp

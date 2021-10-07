@@ -1,6 +1,6 @@
-package org.eln2.sim.electrical.mna
+package org.eln2.libelectric.sim.electrical.mna
 
-import org.eln2.sim.IProcess
+import org.eln2.libelectric.sim.IProcess
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 

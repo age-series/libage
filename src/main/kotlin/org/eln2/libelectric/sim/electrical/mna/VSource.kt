@@ -1,7 +1,7 @@
-package org.eln2.sim.electrical.mna
+package org.eln2.libelectric.sim.electrical.mna
 
-import org.eln2.sim.electrical.mna.component.Component
-import org.eln2.sim.electrical.mna.component.VoltageSource
+import org.eln2.libelectric.sim.electrical.mna.component.Component
+import org.eln2.libelectric.sim.electrical.mna.component.VoltageSource
 
 /**
  * A voltage source in a [Circuit].

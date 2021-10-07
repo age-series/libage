@@ -1,13 +1,15 @@
-package org.eln2.sim.electrical.mna
+package org.eln2.libelectric.sim.electrical.mna
 
 import org.apache.commons.math3.linear.*
-import org.eln2.data.MutableMultiMap
-import org.eln2.data.mutableMultiMapOf
-import org.eln2.debug.DEBUG
-import org.eln2.debug.dprint
-import org.eln2.debug.dprintln
-import org.eln2.sim.IProcess
-import org.eln2.sim.electrical.mna.component.*
+import org.eln2.libelectric.data.MutableMultiMap
+import org.eln2.libelectric.data.mutableMultiMapOf
+import org.eln2.libelectric.debug.DEBUG
+import org.eln2.libelectric.debug.dprint
+import org.eln2.libelectric.debug.dprintln
+import org.eln2.libelectric.sim.IProcess
+import org.eln2.libelectric.sim.electrical.mna.component.Component
+import org.eln2.libelectric.sim.electrical.mna.component.Pin
+import org.eln2.libelectric.sim.electrical.mna.component.*
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import kotlin.collections.ArrayList
@@ -479,9 +481,11 @@ class Circuit {
                 unvisited.remove(front.pin)
                 val children = pinForest[front.pin].filter { it in unvisited }
                 children.withIndex().forEach { (idx, pin) ->
-                    queue.add(PinDebugQueueEntry(pin,
+                    queue.add(
+                        PinDebugQueueEntry(pin,
                         front.lastSibling && idx == children.size - 1
-                    ))
+                    )
+                    )
                 }
                 
                 dprint("${front.pin} (${children.size} children)")

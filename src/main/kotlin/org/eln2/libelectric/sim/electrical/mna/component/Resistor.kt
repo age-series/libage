@@ -1,7 +1,7 @@
-package org.eln2.sim.electrical.mna.component
+package org.eln2.libelectric.sim.electrical.mna.component
 
-import org.eln2.debug.dprintln
-import org.eln2.sim.electrical.mna.Circuit
+import org.eln2.libelectric.debug.dprintln
+import org.eln2.libelectric.sim.electrical.mna.Circuit
 
 /**
  * Implements a simple, static resistor.

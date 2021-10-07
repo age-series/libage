@@ -1,7 +1,7 @@
-package org.eln2.data
+package org.eln2.libelectric.data
 
-import org.eln2.debug.DEBUG
-import org.eln2.debug.dprintln
+import org.eln2.libelectric.debug.DEBUG
+import org.eln2.libelectric.debug.dprintln
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 

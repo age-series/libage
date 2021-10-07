@@ -1,27 +1,27 @@
-package org.eln2.parsers.falstad
+package org.eln2.libelectric.parsers.falstad
 
-import org.eln2.data.MutableMultiMap
-import org.eln2.data.mutableMultiMapOf
-import org.eln2.debug.DEBUG
-import org.eln2.debug.dprintln
-import org.eln2.parsers.falstad.components.generic.Ignore
-import org.eln2.parsers.falstad.components.generic.InterpretGlobals
-import org.eln2.parsers.falstad.components.generic.OutputProbe
-import org.eln2.parsers.falstad.components.generic.WireConstructor
-import org.eln2.parsers.falstad.components.passive.CapacitorConstructor
-import org.eln2.parsers.falstad.components.passive.InductorConstructor
-import org.eln2.parsers.falstad.components.passive.ResistorConstructor
-import org.eln2.parsers.falstad.components.sources.CurrentSourceConstructor
-import org.eln2.parsers.falstad.components.sources.GroundConstructor
-import org.eln2.parsers.falstad.components.sources.VoltageRailConstructor
-import org.eln2.parsers.falstad.components.sources.VoltageSourceConstructor
-import org.eln2.sim.electrical.mna.Circuit
-import org.eln2.sim.electrical.mna.Node
-import org.eln2.sim.electrical.mna.component.Component
-import org.eln2.sim.electrical.mna.component.Resistor
-import org.eln2.sim.electrical.mna.component.VoltageSource
-import org.eln2.data.DisjointSet
-import org.eln2.space.Vec2i
+import org.eln2.libelectric.data.MutableMultiMap
+import org.eln2.libelectric.data.mutableMultiMapOf
+import org.eln2.libelectric.debug.DEBUG
+import org.eln2.libelectric.debug.dprintln
+import org.eln2.libelectric.parsers.falstad.components.generic.Ignore
+import org.eln2.libelectric.parsers.falstad.components.generic.InterpretGlobals
+import org.eln2.libelectric.parsers.falstad.components.generic.OutputProbe
+import org.eln2.libelectric.parsers.falstad.components.generic.WireConstructor
+import org.eln2.libelectric.parsers.falstad.components.passive.CapacitorConstructor
+import org.eln2.libelectric.parsers.falstad.components.passive.InductorConstructor
+import org.eln2.libelectric.parsers.falstad.components.passive.ResistorConstructor
+import org.eln2.libelectric.parsers.falstad.components.sources.CurrentSourceConstructor
+import org.eln2.libelectric.parsers.falstad.components.sources.GroundConstructor
+import org.eln2.libelectric.parsers.falstad.components.sources.VoltageRailConstructor
+import org.eln2.libelectric.parsers.falstad.components.sources.VoltageSourceConstructor
+import org.eln2.libelectric.sim.electrical.mna.Circuit
+import org.eln2.libelectric.sim.electrical.mna.Node
+import org.eln2.libelectric.sim.electrical.mna.component.Component
+import org.eln2.libelectric.sim.electrical.mna.component.Resistor
+import org.eln2.libelectric.sim.electrical.mna.component.VoltageSource
+import org.eln2.libelectric.data.DisjointSet
+import org.eln2.libelectric.space.Vec2i
 
 /**
  * A splitting pattern for runs of one or more spaces (ASCII 32).

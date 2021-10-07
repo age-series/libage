@@ -1,4 +1,4 @@
-package org.eln2.data
+package org.eln2.libelectric.data
 
 /**
  * A class for using the Disjoint Sets "Union-Find" algorithm.

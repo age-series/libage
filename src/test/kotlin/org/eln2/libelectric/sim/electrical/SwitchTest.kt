@@ -1,9 +1,9 @@
-package org.eln2.sim.electrical
+package org.eln2.libelectric.sim.electrical
 
-import org.eln2.debug.mnaPrintln
-import org.eln2.sim.electrical.component.Switch
-import org.eln2.sim.electrical.mna.Circuit
-import org.eln2.sim.electrical.mna.component.VoltageSource
+import org.eln2.libelectric.debug.mnaPrintln
+import org.eln2.libelectric.sim.electrical.component.Switch
+import org.eln2.libelectric.sim.electrical.mna.Circuit
+import org.eln2.libelectric.sim.electrical.mna.component.VoltageSource
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 

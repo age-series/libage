@@ -1,7 +1,7 @@
-package org.eln2.compute.asmComputer.operators
+package org.eln2.libelectric.compute.asmComputer.operators
 
-import org.eln2.compute.asmComputer.AsmComputer
-import org.eln2.compute.asmComputer.Operator
+import org.eln2.libelectric.compute.asmComputer.AsmComputer
+import org.eln2.libelectric.compute.asmComputer.Operator
 
 /**
  * Code Switch - Switch from Code Register A to Code Register B, or the other way around.

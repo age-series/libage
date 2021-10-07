@@ -1,14 +1,14 @@
-package org.eln2.compute.asmComputer.operators
+package org.eln2.libelectric.compute.asmComputer.operators
 
-import org.eln2.compute.asmComputer.AsmComputer
-import org.eln2.compute.asmComputer.CState
-import org.eln2.compute.asmComputer.DoubleRegister
-import org.eln2.compute.asmComputer.IntRegister
-import org.eln2.compute.asmComputer.Operator
-import org.eln2.compute.asmComputer.ReadOnlyDoubleRegister
-import org.eln2.compute.asmComputer.ReadOnlyIntRegister
-import org.eln2.compute.asmComputer.ReadOnlyStringRegister
-import org.eln2.compute.asmComputer.StringRegister
+import org.eln2.libelectric.compute.asmComputer.AsmComputer
+import org.eln2.libelectric.compute.asmComputer.CState
+import org.eln2.libelectric.compute.asmComputer.DoubleRegister
+import org.eln2.libelectric.compute.asmComputer.IntRegister
+import org.eln2.libelectric.compute.asmComputer.Operator
+import org.eln2.libelectric.compute.asmComputer.ReadOnlyDoubleRegister
+import org.eln2.libelectric.compute.asmComputer.ReadOnlyIntRegister
+import org.eln2.libelectric.compute.asmComputer.ReadOnlyStringRegister
+import org.eln2.libelectric.compute.asmComputer.StringRegister
 
 /**
  * Move - this will not only move data from registers that are similar, but it will also convert data from one

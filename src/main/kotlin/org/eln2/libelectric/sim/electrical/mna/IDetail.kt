@@ -1,4 +1,4 @@
-package org.eln2.sim.electrical.mna
+package org.eln2.libelectric.sim.electrical.mna
 
 /**
  * An interface for producing a brief description useful for debug annotation.

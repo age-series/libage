@@ -1,6 +1,6 @@
-package org.eln2.sim.thermal
+package org.eln2.libelectric.sim.thermal
 
-import org.eln2.sim.Material
+import org.eln2.libelectric.sim.Material
 
 class ThermalNode(
     var material: Material,

@@ -1,6 +1,6 @@
-package org.eln2.sim.electrical.mna.component
+package org.eln2.libelectric.sim.electrical.mna.component
 
-import org.eln2.debug.dprintln
+import org.eln2.libelectric.debug.dprintln
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln

@@ -1,4 +1,4 @@
-package org.eln2.sim.electrical.mna.component
+package org.eln2.libelectric.sim.electrical.mna.component
 
 /**
  * An inductor.

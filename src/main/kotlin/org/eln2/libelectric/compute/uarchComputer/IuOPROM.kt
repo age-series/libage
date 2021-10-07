@@ -1,4 +1,4 @@
-package org.eln2.compute.uarchComputer
+package org.eln2.libelectric.compute.uarchComputer
 
 /**
  * micro Operation ROM Interface - a method to store program data for the uarchComputer

@@ -1,9 +1,9 @@
-package org.eln2.debug
+package org.eln2.libelectric.debug
 
 import org.apache.commons.math3.linear.MatrixUtils
 import org.apache.commons.math3.linear.RealMatrix
 import org.apache.commons.math3.linear.RealVector
-import org.eln2.sim.electrical.mna.Circuit
+import org.eln2.libelectric.sim.electrical.mna.Circuit
 
 /**
  * matrixFormat: Prints out the A matrix for the MNA

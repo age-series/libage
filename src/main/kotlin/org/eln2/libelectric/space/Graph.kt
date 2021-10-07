@@ -1,10 +1,10 @@
-package org.eln2.space
+package org.eln2.libelectric.space
 
 import java.util.ArrayList
 import java.util.WeakHashMap
-import org.eln2.data.MutableMultiMap
-import org.eln2.data.mutableMultiMapOf
-import org.eln2.debug.dprintln
+import org.eln2.libelectric.data.MutableMultiMap
+import org.eln2.libelectric.data.mutableMultiMapOf
+import org.eln2.libelectric.debug.dprintln
 
 open class Object(val locator: Locator) {
     var concom: ConnectedComponent? = null

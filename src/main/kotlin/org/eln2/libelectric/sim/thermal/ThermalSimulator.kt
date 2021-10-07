@@ -1,5 +1,5 @@
-package org.eln2.sim.thermal
-import org.eln2.sim.IProcess
+package org.eln2.libelectric.sim.thermal
+import org.eln2.libelectric.sim.IProcess
 
 /**
  * main thermal simulation class
@@ -12,7 +12,7 @@ class ThermalSimulator: IProcess {
         thermalEdges.forEach {
             val t = Thread()
             t.run {
-                it.queueMoveEnergy(dt);
+                it.queueMoveEnergy(dt)
             }
             t.start()
             threadList.add(t)
@@ -22,7 +22,7 @@ class ThermalSimulator: IProcess {
         thermalNodes.forEach {
             val t = Thread()
             t.run {
-                it.commitThermalChanges();
+                it.commitThermalChanges()
             }
             t.start()
             threadList.add(t)
