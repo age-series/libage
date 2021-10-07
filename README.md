@@ -1,0 +1,2 @@
+# libelectric
+Electrical Simulation Library
