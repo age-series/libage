@@ -21,16 +21,16 @@ plugins {
     kotlin("jvm") version "1.5.10"
     jacoco
     idea
-    id("org.jetbrains.dokka") version "1.4.30"
+    id("org.jetbrains.dokka") version "1.5.31"
 }
 
 dependencies {
+    implementation("org.jetbrains.kotlin", "kotlin-stdlib", "1.5.31")
     implementation("org.apache.commons", "commons-math3", "3.6.1")
 
-    testImplementation("org.assertj", "assertj-core", "3.19.0")
-    testImplementation("org.junit.jupiter", "junit-jupiter-api", "5.7.2")
-    testRuntimeOnly("org.junit.jupiter", "junit-jupiter-engine", "5.7.2")
-    implementation("org.jetbrains.kotlin", "kotlin-stdlib", "1.5.31")
+    testImplementation("org.assertj", "assertj-core", "3.21.0")
+    testImplementation("org.junit.jupiter", "junit-jupiter-api", "5.8.1")
+    testRuntimeOnly("org.junit.jupiter", "junit-jupiter-engine", "5.8.1")
 }
 
 tasks {
@@ -49,7 +49,7 @@ tasks {
             showExceptions = true
             showCauses = true
             showStackTraces = true
-            showStandardStreams = System.getenv("MODS_ELN_DEBUG") != ""
+            showStandardStreams = System.getenv("eln2.core.debug") != ""
 
             // At log-level INFO or DEBUG, print everything.
             debug {
