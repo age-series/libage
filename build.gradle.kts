@@ -18,7 +18,7 @@ repositories {
 
 plugins {
     java
-    kotlin("jvm") version "1.5.10"
+    kotlin("jvm") version "1.6.0-RC"
     jacoco
     idea
     id("org.jetbrains.dokka") version "1.5.31"
@@ -79,8 +79,8 @@ tasks {
 
     jacocoTestReport {
         reports {
-            xml.isEnabled = true
-            csv.isEnabled = false
+            xml.required.set(true)
+            csv.required.set(false)
         }
     }
 
@@ -96,9 +96,15 @@ defaultTasks = mutableListOf("build", "test")
 
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
-    jvmTarget = "11"
+    jvmTarget = "17"
 }
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "11"
+    jvmTarget = "17"
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
 }
