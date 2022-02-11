@@ -4,11 +4,12 @@ import org.eln2.libelectric.sim.electrical.generic.*
 import org.eln2.libelectric.sim.electrical.mna.Circuit
 import org.eln2.libelectric.sim.electrical.mna.component.*
 
+@Suppress("unused") // This is an external API endpoint
 class MnaCircuitImpl() : GenericCircuit {
     var circuit = Circuit()
     var components = mutableListOf<GenericComponent>()
     var connectivity = mutableListOf<ComponentConnectivityMapping>()
-    override val backingImplementation = "ModifiedNodalAnalysis"
+    override val backingImplementation = "native-kotlin-mna"
 
     override fun addComponent(c: GenericComponent) {
         components.add(c)
@@ -32,7 +33,7 @@ class MnaCircuitImpl() : GenericCircuit {
             }
             is GenericInductor -> {
                 val inductor = Inductor()
-                inductor.inductance = c.inductanceHenrie
+                inductor.inductance = c.inductanceHenries
                 inductor.flux = 0.0
                 circuit.add(inductor)
                 c.internal = inductor
@@ -57,7 +58,6 @@ class MnaCircuitImpl() : GenericCircuit {
     override fun removeComponent(c: GenericComponent) {
         components.remove(c)
         // Due to the underlying implementation, nuke the circuit and replay everything.
-        circuit = Circuit()
         connectivity.filter { it.localComponent == c || it.remoteComponent == c}.forEach { connectivity.remove(it) }
         internalReplay()
     }
@@ -92,11 +92,11 @@ class MnaCircuitImpl() : GenericCircuit {
     override fun disconnectComponents(localComponent: GenericComponent, remoteComponent: GenericComponent) {
         connectivity.filter { it.localComponent == localComponent && it.remoteComponent == remoteComponent}.forEach { connectivity.remove(it) }
         // Due to the underlying implementation, nuke the circuit and replay everything.
-        circuit = Circuit()
         return internalReplay()
     }
 
     private fun internalReplay() {
+        circuit = Circuit()
         components.forEach { this.addComponent(it) }
         connectivity.forEach { this.connectComponents(it.localComponent, it.localConnection, it.remoteComponent, it.remoteConnection) }
     }
