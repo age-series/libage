@@ -158,7 +158,7 @@ internal class ComponentGraphTest {
 	
 	@Test
 	fun completeGraphs() {
-		(2 .. 10).forEach { cardinality ->
+		for (cardinality in 2 .. 10) {
 			dprintln("===== complete: $cardinality =====")
 
 			val cg = makeInstance()
@@ -183,7 +183,7 @@ internal class ComponentGraphTest {
 
 	@Test
 	fun lineGraphs() {
-		(2 .. 10).forEach { cardinality ->
+		for (cardinality in 2 .. 10) {
 			dprintln("===== line: $cardinality =====")
 			
 			val cg = makeInstance()
@@ -210,7 +210,7 @@ internal class ComponentGraphTest {
 	
 	@Test
 	fun cycles() {
-		(3 .. 10).forEach { cardinality ->
+		for (cardinality in 3 .. 10) {
 			dprintln("===== cycle: $cardinality =====")
 			
 			val cg = makeInstance()
@@ -328,7 +328,7 @@ internal class ComponentGraphTest {
         
         val vertex = cg.mutate { newVertex() }
 
-        (1..10).forEach {
+		for (it in 1 .. 10) {
             updateCounter = 0
             cg.mutate { 
                 val v = newVertex()
