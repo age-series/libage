@@ -7,6 +7,8 @@ import org.eln2.libelectric.sim.electrical.mna.GroundNode
 import org.eln2.libelectric.sim.electrical.mna.IDetail
 import org.eln2.libelectric.sim.electrical.mna.Node
 import org.eln2.libelectric.sim.electrical.mna.VSource
+import java.util.*
+import kotlin.collections.ArrayList
 
 /**
 * The Exception thrown when a [Component]'s [Circuit] is mutated during [Component.connect].
@@ -40,6 +42,89 @@ class Pin: DisjointSet() {
 
     override fun toString(): String {
         return "Pin@${System.identityHashCode(this).toString(16)},rep@${System.identityHashCode(representative).toString(16)},node=$node"
+    }
+}
+
+/**
+ * A reference to a [Component]'s own [Pin], by index.
+ *
+ * As [Pin]s are created and destroyed anytime a [Component] is added or removed from a circuit, this class provides a stable abstraction for naming a [Pin] that can be safely sent wherever the [Component] is used.
+ *
+ * Because of the former, getters on this class should be treated as ephemeral, and *will* race with data modifications to the underlying [Circuit] without causing errors. If you have to cache these variables, keep their lifetimes short and bounded.
+ */
+class PinRef(
+    /** The [Component] whose pin is being described. */
+    val component: Component,
+    pinIndex: Int)
+{
+    init {
+       if(pinIndex < 0 || pinIndex >= component.pinCount)
+           error("Invalid pin index $pinIndex")
+    }
+
+    /** The index of the [Pin] on the [component]. */
+    val pinIndex = pinIndex
+
+    /** Whether the [component] is in a [Circuit]. */
+    val isInCircuit get() = component.isInCircuit
+
+    /**
+     * Get the actual [Pin] referenced.
+     *
+     * This reference *will* be invalidated if the [component]'s [Circuit] membership changes. Thus, unless you can prove this won't happen, do not cache this reference.
+     *
+     * This will throw an error if the [Component] is not yet part of a [Circuit].
+     */
+    val pin get() = component.pins[pinIndex]
+
+    /**
+     * Get the [Node] of the referenced [Pin].
+     *
+     * This reference *is invalid* unless the [component]'s [Circuit]'s [Circuit.componentsChanged] and [Circuit.connectivityChanged] are both false.
+     *
+     * It *will* be invalidated at any point in time if either member becomes true (such that [Circuit.buildMatrix] is called).
+     *
+     * An error will be thrown if the [component] is not owned by a [Circuit].
+     */
+    val node get() = pin.node
+
+    /**
+     * Connect two [Pin]s.
+     *
+     * This has the same effect as [Component.connect] on the underlying components.
+     *
+     * The same warnings as for [pin] are in place.
+     */
+    fun connect(to: PinRef) {
+        component.connect(pinIndex, to.component, to.pinIndex)
+    }
+
+    /**
+     * Ground a [Pin].
+     *
+     * This has the same effect as [Component.ground] on the underlying component.
+     *
+     * The same warnins as for [pin] are in place.
+     */
+    fun ground() {
+        component.ground(pinIndex)
+    }
+
+    // Usual data class overrides
+    fun component1() = component
+    fun component2() = pinIndex
+
+    override fun toString() = "PinRef(component=$component, pinIndex=$pinIndex)"
+
+    fun copy(
+        component: Component = this.component,
+        pinIndex: Int = this.pinIndex
+    ) = PinRef(component, pinIndex)
+
+    override fun hashCode() = Objects.hash(component, pinIndex)
+    override fun equals(other: Any?) = when(other) {
+        is PinRef -> component === other.component && pinIndex == other.pinIndex
+        else -> false
     }
 }
 
@@ -149,6 +234,12 @@ abstract class Component : IDetail {
     @Suppress("LeakingThis") // Safe in a single threaded setting, apparently.
     var pins: MutableList<Pin> = ArrayList(pinCount)
 
+    /** Get a [PinRef] to one of the [pins].
+     *
+     * As discussed in [PinRef], this is a stable identifier of the terminal, as the underlying [Pin] can change when [Circuit] ownership changes.
+     */
+    fun pinRef(i: Int) = PinRef(this, i)
+
     /**
      * The list of [VSource]s held by this Component.
      *
@@ -235,6 +326,16 @@ abstract class Port : Component() {
      */
     open val neg: Node?
         get() = node(0)
+
+    /**
+     * Get the positive [PinRef].
+     */
+    open val posRef get() = pinRef(1)
+
+    /**
+     * Get the negative [PinRef].
+     */
+    open val negRef get() = pinRef(0)
 
     /**
      * Get the potential across [pos] and [neg], signed positive when [pos] has a greater potential than [neg].
