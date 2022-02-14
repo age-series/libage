@@ -447,7 +447,7 @@ class Falstad(val source: String) {
 
             val on = f.outputNodes
             println("#T\t${on.indices.joinToString("\t") { i -> "O${i + 1}" }}")
-            (1..steps).forEach { step ->
+            for (step in 1 .. steps) {
                 if (!f.circuit.step(f.nominalTimestep)) error("step error (singularity?)")
                 println("${step * f.nominalTimestep}\t${on.joinToString("\t") { node -> node?.potential.toString() }}")
             }
