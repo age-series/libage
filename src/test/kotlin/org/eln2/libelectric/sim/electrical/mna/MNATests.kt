@@ -284,4 +284,30 @@ internal class MNATests {
         assert(within_tolerable_error(i1.potential, 3.703, tolerance))
         assert(within_tolerable_error(i1.current, 12.968e-3, tolerance))
     }
+
+    @Test
+    fun testPinRefAPI() {
+        val c = Circuit()
+        val r = Resistor()
+        val vs = VoltageSource()
+
+        val vp = vs.posRef
+        val vn = vs.negRef
+        val rp = r.posRef
+        val rn = r.negRef
+
+        c.add(vs, r)
+
+        vs.potential = 10.0
+        r.resistance = 10.0
+
+        vp.connect(rp)
+        vn.connect(rn)
+        vn.ground()
+
+        assert(c.step(0.05))
+        mnaPrintln(c)
+        assert(r.current > 0.99 && r.current < 1.01)
+        assert(vs.current > 0.99 && vs.current < 1.01)
+    }
 }
