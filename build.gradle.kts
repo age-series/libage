@@ -20,6 +20,7 @@ plugins {
     jacoco
     idea
     id("org.jetbrains.dokka") version "1.6.10"
+    `maven-publish`
 }
 
 dependencies {
