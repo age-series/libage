@@ -107,3 +107,11 @@ java {
         languageVersion.set(JavaLanguageVersion.of(17))
     }
 }
+
+publishing {
+    publications {
+        create<MavenPublication>("libage") {
+            from(components["java"])
+        }
+    }
+}
