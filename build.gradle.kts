@@ -20,7 +20,6 @@ plugins {
     jacoco
     idea
     id("org.jetbrains.dokka") version "1.6.10"
-    `maven-publish`
 }
 
 dependencies {
@@ -105,27 +104,5 @@ compileTestKotlin.kotlinOptions {
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(17))
-    }
-}
-
-publishing {
-    publications {
-        create<MavenPublication>("libage") {
-            from(components["java"])
-            pom {
-                url.set("https://github.com/age-series/libage.git")
-            }
-        }
-    }
-
-    repositories {
-        maven {
-            name = "Github"
-            url = uri("https://maven.pkg.github.com/age-series/libage")
-            credentials {
-                username = System.getenv("GITHUB_USERNAME")
-                password = System.getenv("GITHUB_TOKEN")
-            }
-        }
     }
 }
