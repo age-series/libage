@@ -1,8 +1,8 @@
 package org.eln2.libelectric.parsers
 
 import java.io.File
-import org.eln2.libelectric.parsers.Gnuplot.Companion.export
-import org.eln2.libelectric.parsers.Gnuplot.Companion.import
+import org.ageseries.libage.parsers.Gnuplot.Companion.export
+import org.ageseries.libage.parsers.Gnuplot.Companion.import
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 

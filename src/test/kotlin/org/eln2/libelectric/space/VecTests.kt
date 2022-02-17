@@ -1,5 +1,7 @@
 package org.eln2.libelectric.space
 
+import org.ageseries.libage.space.Vec2i
+import org.ageseries.libage.space.Vec3i
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 

@@ -1,6 +1,10 @@
 package org.eln2.libelectric.data
 
-import org.eln2.libelectric.debug.dprintln
+import org.ageseries.libage.data.MultiMap
+import org.ageseries.libage.data.MutableMultiMap
+import org.ageseries.libage.data.MutableSetMapMultiMap
+import org.ageseries.libage.data.SetMapMultiMap
+import org.ageseries.libage.debug.dprintln
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
