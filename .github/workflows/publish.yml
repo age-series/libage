@@ -42,7 +42,7 @@ jobs:
 
         -   name: Run tests
             run: ./gradlew test
-        - name: Publish package
+        -   name: Publish package
             run: ./gradlew publish
             env:
                 GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
