@@ -1,0 +1,12 @@
+version: 0.2
+
+# This buildspec file is used by AWS to build the package in a CodePipeline
+phases:
+    build:
+        commands:
+            - ./gradlew build
+
+# This defines where to fetch the built artifacts from
+artifacts:
+    files:
+        - 'build/libs/*
