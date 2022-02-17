@@ -9,4 +9,4 @@ phases:
 # This defines where to fetch the built artifacts from
 artifacts:
     files:
-        - 'build/libs/*
+        - 'build/libs/*'
