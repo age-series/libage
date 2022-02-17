@@ -1,7 +1,7 @@
 package org.eln2.libelectric
 
-import org.eln2.libelectric.debug.dprint
-import org.eln2.libelectric.debug.dprintln
+import org.ageseries.libage.debug.dprint
+import org.ageseries.libage.debug.dprintln
 import org.junit.jupiter.api.Test
 
 internal class DebugTests {

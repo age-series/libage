@@ -1,5 +1,7 @@
 package org.eln2.libelectric.math
 
+import org.ageseries.libage.math.FunctionTable
+import org.ageseries.libage.math.IFunction
 import kotlin.math.PI
 import kotlin.math.absoluteValue
 import kotlin.math.cos

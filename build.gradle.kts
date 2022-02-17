@@ -1,8 +1,8 @@
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-version = "0.1.0"
-group = "org.eln2"
+version = "1.0.0"
+group = "org.ageseries.libage"
 
 buildscript {
     repositories {
@@ -12,25 +12,24 @@ buildscript {
 
 repositories {
     mavenCentral()
-    maven(url = "https://dl.bintray.com/kotlin/kotlin-eap")
-    maven(url = "https://kotlin.bintray.com/kotlinx")
 }
 
 plugins {
     java
-    kotlin("jvm") version "1.6.0-RC"
+    kotlin("jvm") version "1.6.10"
     jacoco
     idea
-    id("org.jetbrains.dokka") version "1.5.31"
+    id("org.jetbrains.dokka") version "1.6.10"
+    `maven-publish`
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin", "kotlin-stdlib", "1.5.31")
+    implementation("org.jetbrains.kotlin", "kotlin-stdlib", "1.6.10")
     implementation("org.apache.commons", "commons-math3", "3.6.1")
 
-    testImplementation("org.assertj", "assertj-core", "3.21.0")
-    testImplementation("org.junit.jupiter", "junit-jupiter-api", "5.8.1")
-    testRuntimeOnly("org.junit.jupiter", "junit-jupiter-engine", "5.8.1")
+    testImplementation("org.assertj", "assertj-core", "3.22.0")
+    testImplementation("org.junit.jupiter", "junit-jupiter-api", "5.8.2")
+    testRuntimeOnly("org.junit.jupiter", "junit-jupiter-engine", "5.8.2")
 }
 
 tasks {
@@ -91,7 +90,7 @@ tasks {
     }
 }
 
-// By default build everything, put it somewhere convenient, and run the tests.
+// By default, build everything, put it somewhere convenient, and run the tests.
 defaultTasks = mutableListOf("build", "test")
 
 val compileKotlin: KotlinCompile by tasks
@@ -106,5 +105,27 @@ compileTestKotlin.kotlinOptions {
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("libage") {
+            from(components["java"])
+            pom {
+                url.set("https://github.com/age-series/libage.git")
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "Github"
+            url = uri("https://maven.pkg.github.com/age-series/libage")
+            credentials {
+                username = System.getenv("GITHUB_USERNAME")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
     }
 }

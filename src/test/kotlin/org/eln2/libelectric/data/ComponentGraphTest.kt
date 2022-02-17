@@ -1,7 +1,8 @@
 package org.eln2.libelectric.data
 
-import org.eln2.libelectric.debug.DEBUG
-import org.eln2.libelectric.debug.dprintln
+import org.ageseries.libage.data.*
+import org.ageseries.libage.debug.DEBUG
+import org.ageseries.libage.debug.dprintln
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
