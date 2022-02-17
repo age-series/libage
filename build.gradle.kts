@@ -26,6 +26,7 @@ plugins {
 dependencies {
     implementation("org.jetbrains.kotlin", "kotlin-stdlib", "1.6.10")
     implementation("org.apache.commons", "commons-math3", "3.6.1")
+    implementation("org.jetbrains:annotations:23.0.0")
 
     testImplementation("org.assertj", "assertj-core", "3.22.0")
     testImplementation("org.junit.jupiter", "junit-jupiter-api", "5.8.2")
