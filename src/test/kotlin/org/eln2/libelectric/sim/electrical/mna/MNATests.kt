@@ -313,4 +313,25 @@ internal class MNATests {
         assert(r.current > 0.99 && r.current < 1.01)
         assert(vs.current > 0.99 && vs.current < 1.01)
     }
+
+    @Test
+    fun testCircuitDot() {
+        val c = Circuit()
+        val r = Resistor()
+        val vs = VoltageSource()
+
+        c.add(vs, r)
+
+        vs.connect(0, r, 0)
+        vs.connect(1, r, 1)
+        vs.ground(0)
+
+        vs.potential = 10.0
+        r.resistance = 10.0
+
+        c.buildMatrix() // Required to populate nodes, otherwise toDot will crash
+        val output = c.toDot()
+
+        assert(output.length > 1)
+    }
 }

@@ -663,7 +663,7 @@ class Circuit {
                     1 -> ":e"
                     else -> ""
                 }
-                val node = it.representative as Node
+                val node = (it.representative as Pin).node ?: throw Exception("This pin has a null Node!")
                 sb.append("\t\"c${System.identityHashCode(cmp)}\"$port -- \"${if(node.isGround) "ground" else "n${node.index}"}\" [shape=box ")
                 when (it.node?.index) {
                     0 -> sb.append("color=red")
