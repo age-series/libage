@@ -74,6 +74,13 @@ class Scale(
 value class Temperature(val kelvin: Double) {
     fun in_(scale: Scale): Double = scale.map(kelvin)
 
+    operator fun plus(rhs: Temperature) = Temperature(kelvin + rhs.kelvin)
+    operator fun minus(rhs: Temperature) = Temperature(kelvin - rhs.kelvin)
+
+    operator fun compareTo(rhs: Temperature) = kelvin.compareTo(rhs.kelvin)
+
+    override fun toString() = Scale.KELVIN.display(kelvin)
+
     companion object {
         fun from(temp: Double, scale: Scale) = Temperature(scale.unmap(temp))
     }
@@ -97,6 +104,8 @@ class Material(
     /** Intrinsic conductance, in W/mK. */
     val conductance: Double,
 ) {
+    override fun toString() = "<Mat ${specificHeat}J/(K kg) ${conductance}W/(m K)>"
+
     companion object {
         // NB: If you're populating these from the Wikipedia article,
         // note that they record J/gK, not J/kgK, so make sure to
@@ -109,7 +118,7 @@ class ThermalMass(
     /** The material of this mass, used for its thermal properties. */
     val material: Material,
     /** Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE]. */
-    energy: Double?,
+    energy: Double? = null,
     /** Mass, in kg. */
     val mass: Double = 1.0,
 ) {
@@ -124,6 +133,8 @@ class ThermalMass(
         set(value) {
             energy = value.kelvin * mass * material.specificHeat
         }
+
+    override fun toString() = "<Mass $material ${mass}kg ${energy}J $temperature>"
 }
 
 data class ThermalConnectionParameters(
@@ -150,6 +161,8 @@ class ThermalConnection(
     val contactPoint = params.contactPoint
     val distance = params.distance
     val conductance = params.conductance
+
+    override fun toString() = "<Conn $a $b ${distance}m($contactPoint) ${conductance}W/K>"
     /**
      * Returns the change in energy, added to [a] and subtracted from [b], which would equilibriate the connected thermal masses over the given period of time [dt] (in s).
      *
@@ -172,11 +185,14 @@ class ThermalConnection(
 interface ThermalBody<Locator> {
     val mass: ThermalMass
     val locator: Locator
+    /** Surface area of this body w.r.t. the [Environment], nominally in m^2. */
     val surfaceArea: Double
 }
 
 interface Environment<Locator> {
+    /** The [Temperature] of the environment at this locator. */
     fun temperature(locator: Locator): Temperature
+    /** How conductive the substance in the environment is at this locator. */
     fun conductance(locator: Locator): Double
 }
 
@@ -206,9 +222,10 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
         }
     }
 
-    fun connect(a: ThermalBody<Locator>, b: ThermalBody<Locator>, params: ThermalConnectionParameters = ThermalConnectionParameters.DEFAULT) {
-        add(Connection(a, b, params))
-    }
+    fun connect(a: ThermalBody<Locator>, b: ThermalBody<Locator>, params: ThermalConnectionParameters = ThermalConnectionParameters.DEFAULT): Connection<Locator> =
+        Connection(a, b, params).also {
+            add(it)
+        }
 
     fun remove(vararg bodies_removed: ThermalBody<Locator>) {
         bodies.removeAll(bodies_removed)
@@ -221,6 +238,7 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
     }
 
     fun remove(vararg connections_removed: Connection<Locator>) {
+        connections.removeAll(connections_removed)
         connections_removed.forEach {
             connectionMap[it.a].remove(it)
             connectionMap[it.b].remove(it)
