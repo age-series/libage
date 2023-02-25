@@ -10,7 +10,7 @@ https://en.wikipedia.org/wiki/Thermal_contact_conductance
 
 Optimally, our simulator takes mass and thermal conductivity of materials into account as well.
 
-There's a bunch of useful material properties in [Material](../Material.kt).
+There's a bunch of useful material properties in [Material](../constant/Material.kt).
 
 My guess is that [IProcess](../IProcess.kt) would also be useful.
 

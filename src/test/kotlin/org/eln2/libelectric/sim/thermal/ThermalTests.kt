@@ -1,5 +1,6 @@
 package org.eln2.libelectric.sim.thermal
 
+import org.ageseries.libage.sim.constant.Material
 import org.ageseries.libage.sim.thermal.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -21,7 +22,7 @@ internal class ThermalTests {
         val rightTemp: Temperature = STANDARD_TEMPERATURE,
         val leftTemp: Temperature = STANDARD_TEMPERATURE,
         val rightPoint: Loc = Loc(0),
-    ): Environment<Loc> {
+    ): ThermalEnvironment<Loc> {
         override fun temperature(locator: Loc): Temperature =
             if(locator.x < rightPoint.x) {
                 leftTemp
@@ -34,7 +35,7 @@ internal class ThermalTests {
 
     @Test
     fun consistent_data_model() {
-        val sim = Simulator(TestEnv(0.0))
+        val sim = ThermalSimulator(TestEnv(0.0))
         val a = TestBody(Loc(0), ThermalMass(Material.IRON))
         val b = TestBody(Loc(0), ThermalMass(Material.IRON))
         val c = TestBody(Loc(0), ThermalMass(Material.IRON))
@@ -71,7 +72,7 @@ internal class ThermalTests {
 
     @Test
     fun perfectly_isolated() {
-        val sim = Simulator(TestEnv(0.0))
+        val sim = ThermalSimulator(TestEnv(0.0))
         val a = TestBody(Loc(1), ThermalMass(Material.IRON))
         val b = TestBody(Loc(2), ThermalMass(Material.IRON))
         a.mass.temperature = STANDARD_TEMPERATURE
@@ -88,7 +89,7 @@ internal class ThermalTests {
 
     @Test
     fun second_law() {
-        val sim = Simulator(TestEnv(0.0))  // Don't conduct from/to env
+        val sim = ThermalSimulator(TestEnv(0.0))  // Don't conduct from/to env
         val a = TestBody(Loc(1), ThermalMass(Material.IRON))
         val b = TestBody(Loc(2), ThermalMass(Material.IRON))
         val lesser = STANDARD_TEMPERATURE
@@ -109,7 +110,7 @@ internal class ThermalTests {
     fun conductivity_proportional_to_connectivity() {
         var lastIncrease: Temperature? = null
         for(it in 1..10) {
-            val sim = Simulator(TestEnv(0.0))
+            val sim = ThermalSimulator(TestEnv(0.0))
             val cen = TestBody(Loc(0), ThermalMass(Material.IRON))
             cen.mass.temperature = STANDARD_TEMPERATURE
             val others = (1..it).map {
@@ -132,7 +133,7 @@ internal class ThermalTests {
 
     @Test
     fun environment() {
-        val sim = Simulator(TestEnv(
+        val sim = ThermalSimulator(TestEnv(
             1.0,
             STANDARD_TEMPERATURE + A_BIT,
             STANDARD_TEMPERATURE - A_BIT,

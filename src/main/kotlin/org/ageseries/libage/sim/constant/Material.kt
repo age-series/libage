@@ -1,29 +1,31 @@
-package org.ageseries.libage.sim
+package org.ageseries.libage.sim.constant
 
 import kotlin.math.pow
 
 /**
  * Material
  *
- * Contains data about materials that we need for various calculations such as electrical and thermal simulations
+ * Contains data about materials that we need for various calculations such as electrical and thermal simulations.
  */
 enum class Material {
 	COPPER {
 		override val resistivity: Double = 1.68 * 10.0.pow(-8.0)
 		override val thermalConductivity: Double = 385.0
-        override val specficHeat: Double = 0.0
+        override val specificHeat: Double = 385.0 // https://theengineeringmindset.com/specific-heat-capacity-of-materials/
         override val density: Double = 8940.0
 	},
+
 	RUBBER {
 		override val resistivity: Double = 1 * 10.0.pow(13.0)
 		override val thermalConductivity: Double = 0.15
-        override val specficHeat: Double = 0.0
+        override val specificHeat: Double = 2005.0 // https://theengineeringmindset.com/specific-heat-capacity-of-materials/
         override val density: Double = 1522.0
 	},
+
 	IRON {
 		override val resistivity: Double = 9.71 * 10.0.pow(-8.0)
 		override val thermalConductivity: Double = 79.5
-        override val specficHeat: Double = 0.0
+        override val specificHeat: Double = 462.0 // https://theengineeringmindset.com/specific-heat-capacity-of-materials/
         override val density: Double = 7874.0
 	};
 
@@ -83,7 +85,7 @@ Air:        0.024
 Source: http://hyperphysics.phy-astr.gsu.edu/hbase/Tables/thrcn.html
 */
 
-    abstract val specficHeat: Double
+    abstract val specificHeat: Double
 
 	// amperage per material type per mm^2 (possibly - calculate from thermal conductivity, power and thermal conductivity
 	// abstract val amperageMaterial: Double
