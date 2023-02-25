@@ -1,6 +1,8 @@
 package org.ageseries.libage.space
 
 import kotlin.math.abs
+import kotlin.math.sign
+import kotlin.math.sqrt
 
 /**
  * A vector in a two-dimensional space of integers.
@@ -67,11 +69,59 @@ data class Vec3i(val x: Int, val y: Int, val z: Int) {
      */
     fun l1norm(v: Vec3i): Int = abs(v.x - x) + abs(v.y - y) + abs(v.z - z)
 
+    val vec3f: Vec3f get() = Vec3f(x.toDouble(), y.toDouble(), z.toDouble())
+
     companion object {
         val ZERO = Vec3i(0, 0, 0)
         val XU = Vec3i(1, 0, 0)
         val YU = Vec3i(0, 1, 0)
         val ZU = Vec3i(0, 0, 1)
+    }
+}
+
+/**
+ * A vector in a three-dimensional real space.
+ */
+data class Vec3f(val x: Double, val y: Double, val z: Double) {
+    operator fun unaryMinus() = Vec3f(-x, -y, -z)
+    operator fun plus(other: Vec3f) = Vec3f(x + other.x, y + other.y, z + other.z)
+    operator fun minus(other: Vec3f) = this + (-other)
+    fun recip() = Vec3f(1.0/x, 1.0/y, 1.0/z)
+    operator fun times(other: Vec3f) = Vec3f(x * other.x, y * other.y, z * other.z)
+    operator fun div(other: Vec3f) = this * other.recip()
+
+    operator fun plus(other: Double) = this + diag(other)
+    operator fun minus(other: Double) = this - diag(other)
+    operator fun times(other: Double) = this * diag(other)
+    operator fun div(other: Double) = this / diag(other)
+
+    val isZero: Boolean
+        get() = x == 0.0 && y == 0.0 && z == 0.0
+
+    fun dot(other: Vec3f) = x * other.x + y * other.y + z * other.z
+    val magSquared: Double get() = dot(this)
+    val mag: Double get() = sqrt(magSquared)
+
+    val normalized: Vec3f
+        get() = if(isZero) { ZERO } else { this / mag }
+
+    fun cross(other: Vec3f) = Vec3f(
+        y * other.z - z * other.y,
+        z * other.x - x * other.z,
+        x * other.y - y * other.x
+    )
+
+    // TODO: figure out this rounding mode and document it accordingly
+    // (Until then, don't rely on this!)
+    val vec3i: Vec3i get() = Vec3i(x.toInt(), y.toInt(), z.toInt())
+
+    companion object {
+        fun diag(v: Double) = Vec3f(v, v, v)
+
+        val ZERO = Vec3f(0.0, 0.0, 0.0)
+        val XU = Vec3f(1.0, 0.0, 0.0)
+        val YU = Vec3f(0.0, 1.0, 0.0)
+        val ZU = Vec3f(0.0, 0.0, 1.0)
     }
 }
 
@@ -282,31 +332,26 @@ interface Locator {
 /**
  *  Locator support for "simple nodes" that take up an entire block in three-dimensional space.
  */
-data class BlockPos(override val vec3i: Vec3i) : Locator {
+open class BlockPos(override val vec3i: Vec3i) : Locator {
     companion object {
-        val CONNECTIVITY_DELTAS = arrayListOf(
-            // Cardinal directions on the horizontal plane (Y-normal)
-            Vec3i(1, 0, 0), Vec3i(-1, 0, 0), Vec3i(0, 0, 1), Vec3i(0, 0, -1),
-            // Up a block
-            Vec3i(1, 1, 0), Vec3i(-1, 1, 0), Vec3i(0, 1, 1), Vec3i(0, 1, -1),
-            // Down a block
-            Vec3i(1, -1, 0), Vec3i(-1, -1, 0), Vec3i(0, -1, 1), Vec3i(0, -1, -1)
-        )
+        val CONNECTIVITY_DELTAS = PlanarFace.values().map { it.vec3i }
     }
 
-    override fun neighbors(): List<Locator> = CONNECTIVITY_DELTAS.map { translate(it) }
+    override fun toString() = "BlockPos($vec3i)"
+
+    override fun neighbors(): List<Locator> = CONNECTIVITY_DELTAS.map { translated(it) }
 
     /**
      * Offsets a vector based on the position of this node.
      */
-    fun translate(v: Vec3i) = BlockPos(vec3i + v)
+    fun translated(v: Vec3i) = BlockPos(vec3i + v)
 }
 
 /**
  *  Locator support for surface-mounted nodes the exist on a three-dimensional block. Up to six can exist per block,
  *  corresponding to each face.
  */
-data class SurfacePos(override val vec3i: Vec3i, val face: PlanarFace) : Locator {
+open class SurfacePos(override val vec3i: Vec3i, val face: PlanarFace) : Locator {
     companion object {
         // On the same plane:
         val PLANAR_DELTAS = arrayListOf(
@@ -322,12 +367,14 @@ data class SurfacePos(override val vec3i: Vec3i, val face: PlanarFace) : Locator
         )
     }
 
+    override fun toString() = "SurfacePos($vec3i, $face)"
+
     // Preserve chirality: invert _two_ components, or none.
     // There's very little thought in the permutation otherwise, however; if those need to be changed, they can be.
     /**
      * Orients a vector based on which plane of a cube this node is on. This preserves chirality.
      */
-    fun toReference(v: Vec3i): Vec3i = when (face) {
+    fun toGlobal(v: Vec3i): Vec3i = when (face) {
         PlanarFace.NegX -> Vec3i(v.y, v.x, v.z)
         PlanarFace.PosX -> Vec3i(-v.y, -v.x, v.z)
         PlanarFace.PosY -> Vec3i(-v.x, -v.y, v.z)
@@ -339,10 +386,9 @@ data class SurfacePos(override val vec3i: Vec3i, val face: PlanarFace) : Locator
     /**
      * Offsets a vector based on the position and orientation of this node.
      */
-    fun translate(v: Vec3i) = SurfacePos(vec3i + toReference(v), face)
+    fun translated(v: Vec3i) = SurfacePos(vec3i + toGlobal(v), face)
 
-    override fun neighbors(): List<Locator> = (PLANAR_DELTAS
-        .map { translate(it) } + // Other adjacent blocks on the same plane
+    override fun neighbors(): List<Locator> = (PLANAR_DELTAS.map { translated(it) } + // Other adjacent blocks on the same plane
         face.adjacencies.map { SurfacePos(vec3i, it) } + // Connections within the same block
         face.adjacencies.map { SurfacePos(vec3i + face.vec3i + it.normal, it) } // "Wrapping" (L1=2) connections
         )
@@ -353,19 +399,129 @@ data class SurfacePos(override val vec3i: Vec3i, val face: PlanarFace) : Locator
             1 -> face == other.face
             2 -> {
                 val delta = other.vec3i - vec3i
-                val other_norm = delta + face.normal
+                val otherNorm = delta + face.normal
                 println(
-                    "SP.cC: L1=2: delta $delta other_norm $other_norm face.normal ${face.normal} this.vec $vec3i other.vec ${other.vec3i} other.face ${other.face} PF.fN(on) ${
+                    "SP.cC: L1=2: delta $delta other_norm $otherNorm face.normal ${face.normal} this.vec $vec3i other.vec ${other.vec3i} other.face ${other.face} PF.fN(on) ${
                         PlanarFace.fromNormal(
-                            other_norm
+                            otherNorm
                         )
                     }"
                 )
-                other.face == PlanarFace.fromNormal(other_norm)
+                other.face == PlanarFace.fromNormal(otherNorm)
             }
             else -> error("Illegal norm")
         }
         is BlockPos -> true
         else -> true
+    }
+}
+
+object GPUtil {
+    fun gp(v: Vec3i): String = "${v.x},${v.z},${v.y}"
+    fun gp(v: Vec3f): String = "${v.x},${v.z},${v.y}"
+
+    data class FaceInfo(val offset: Vec3f, val ax1: Axis, val ax2: Axis)
+    fun faceInfo(face: PlanarFace): FaceInfo {
+        val axes = face.adjacencies.map { it.axis }
+        // Conjecture: there are two axes
+        val ax1 = axes[0]
+        val ax2 = axes[1]
+        var off = ax1.cross(ax2)!!.vec3i.vec3f
+        if(face.neg) off *= -1.0
+        return FaceInfo(off, ax1, ax2)
+    }
+
+    val signs = arrayOf(
+        Pair(-1.0, -1.0),
+        Pair(1.0, -1.0),
+        Pair(1.0, 1.0),
+        Pair(-1.0, 1.0),
+    )
+    fun plotFace(face: PlanarFace, origin: Vec3f = Vec3f.ZERO, style: String = "") {
+        val (off, ax1, ax2) = faceInfo(face)
+        val pts = mutableListOf<Vec3f>()
+        for ((sgn1, sgn2) in signs) {
+            val pt = origin + off + ax1.vec3i.vec3f * sgn1 + ax2.vec3i.vec3f * sgn2
+            pts.add(pt)
+        }
+        for ((idx, pt) in pts.withIndex()) {
+            val next = pts[(idx + 1) % pts.size]
+            println("set arrow from ${PlotSurfacePosRotations.gp(pt)} to ${PlotSurfacePosRotations.gp(next)} nohead $style")
+        }
+    }
+
+    fun plotCube(origin: Vec3f = Vec3f.ZERO, style: String = "") {
+        for(face in PlanarFace.values()) {
+            plotFace(face, origin, style)
+        }
+    }
+
+    val axisColors = arrayOf("#ff0000", "#00ff00", "#0000ff")
+    fun plotRose(origin: Vec3f = Vec3f.ZERO, scale: Double = 0.2, style: String = "") {
+        for(axis in Axis.values()) {
+            println("set arrow from ${gp(origin)} to ${gp(origin + axis.vec3i.vec3f * scale)} lc \"${axisColors[axis.int]}\" $style")
+        }
+    }
+
+    fun locatorSpace(pos: Vec3f) = pos * 2.0
+    fun locatorSpace(pos: Vec3i) = locatorSpace(pos.vec3f)
+
+    fun plotLocator(loc: Locator, style: String = "") {
+        when(loc) {
+            is BlockPos -> plotLocator(loc, style)
+            is SurfacePos -> plotLocator(loc, style)
+        }
+    }
+    fun plotLocator(loc: BlockPos, style: String = "") {
+        plotCube(locatorSpace(loc.vec3i), style)
+    }
+    fun plotLocator(loc: SurfacePos, style: String = "") {
+        plotFace(loc.face, locatorSpace(loc.vec3i), style)
+    }
+}
+
+class PlotSurfacePosRotations {
+    companion object {
+        val gp: (Vec3f) -> String = GPUtil::gp
+        val colors = GPUtil.axisColors
+
+        @JvmStatic
+        fun main(args: Array<String>) {
+            val units = with(Vec3i) { arrayOf(XU, YU, ZU) }
+            val faces = PlanarFace.values()
+            for(axis in arrayOf("x", "y", "z")) {
+                println("set ${axis}range [-1:1]")
+            }
+
+            for(face in faces) {
+                println("# Face: $face")
+                val off = GPUtil.faceInfo(face).offset
+                GPUtil.plotFace(face, style = "lc \"#007700\"")
+                println("set label \"$face\" at ${gp(off)} tc \"${colors[face.axis.int]}\"")
+
+                val sp = SurfacePos(Vec3i.ZERO, face)
+                for((idx, unit) in units.withIndex()) {
+                    val color = colors[idx]
+                    val mapped = sp.toGlobal(unit).vec3f / 5.0
+                    println("set arrow from ${gp(off)} to ${gp(off + mapped)} lc \"$color\"")
+                }
+                println("")
+            }
+        }
+    }
+}
+
+class PlotBlockPosNeighbors {
+    companion object {
+        @JvmStatic
+        fun main(args: Array<String>) {
+            val bp = BlockPos(Vec3i.ZERO)
+            for(neighbor in bp.neighbors()) {
+                GPUtil.plotLocator(neighbor, "lc \"#007700\"")
+                GPUtil.plotRose(GPUtil.locatorSpace(neighbor.vec3i))
+            }
+            GPUtil.plotLocator(bp, "lc \"#ff0000\"")
+            GPUtil.plotRose()
+        }
     }
 }
