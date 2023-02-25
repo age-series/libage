@@ -1,6 +1,7 @@
 package org.ageseries.libage.sim.thermal
 
 import org.ageseries.libage.data.mutableMultiMapOf
+import java.util.*
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -94,6 +95,8 @@ value class Temperature(val kelvin: Double) {
 /**
  * "Standard" temperature, in Kelvin.
  *
+ * This is the "ST" of STP, as reported in laboratory conditions.
+ *
  * This is used as the default temperature for thermal masses.
  */
 val STANDARD_TEMPERATURE: Temperature = Temperature(273.15)
@@ -116,6 +119,9 @@ class Material(
         // NB: If you're populating these from the Wikipedia article,
         // note that they record J/gK, not J/kgK, so make sure to
         // multiply by 1e3
+        // Source: https://en.wikipedia.org/wiki/Table_of_specific_heat_capacities
+        // Source: https://en.wikipedia.org/wiki/List_of_thermal_conductivities
+        // I've chosen the conductivities at ST, noting that they vary
         val IRON = Material(412.0, 83.5)
     }
 }
@@ -176,13 +182,13 @@ class ThermalConnection(
      */
     fun transfer(dt: Double): Double {
         // Kelvin
-        val delta_T = b.temperature.kelvin - a.temperature.kelvin
+        val deltaT = b.temperature.kelvin - a.temperature.kelvin
         // W/K
-        val dist_cond_a = a.material.conductance * contactPoint * distance
-        val dist_cond_b = b.material.conductance * (1.0 - contactPoint) * distance
-        val overall_cond = (dist_cond_a * dist_cond_b * conductance).pow(1.0/3.0)
+        val distCondA = a.material.conductance * contactPoint * distance
+        val distCondB = b.material.conductance * (1.0 - contactPoint) * distance
+        val overallCond = (distCondA * distCondB * conductance).pow(1.0/3.0)
         // W
-        val power = delta_T * overall_cond
+        val power = deltaT * overallCond
         // J
         return power * dt
     }
@@ -216,26 +222,25 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
     val connectionMap = mutableMultiMapOf<ThermalBody<Locator>, Connection<Locator>>()
 
     /**
-     * Add some bodies to the simulation.
+     * Add a body to the simulation.
      *
-     * Without connection, these bodies will still conduct from/to the [environment].
+     * Without connection, this body will still conduct from/to the [environment].
      */
-    fun add(vararg bodies_added: ThermalBody<Locator>) {
-        bodies.addAll(bodies_added)
+    fun add(body: ThermalBody<Locator>) {
+        bodies.add(body)
     }
 
     /**
-     * Add some connections to the simulation.
+     * Add a connection to the simulation.
      *
      * Generally, you would use [connect] instead.
      */
-    fun add(vararg connections_added: Connection<Locator>) {
-        connections.addAll(connections_added)
-        connections_added.forEach {
-            add(it.a, it.b)
-            connectionMap[it.a] = it
-            connectionMap[it.b] = it
-        }
+    fun add(connection: Connection<Locator>) {
+        connections.add(connection)
+        add(connection.a)
+        add(connection.b)
+        connectionMap[connection.a] = connection
+        connectionMap[connection.b] = connection
     }
 
     /**
@@ -249,32 +254,36 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
         }
 
     /**
-     * Remove the bodies from the simulation.
+     * Remove the body from the simulation.
      *
-     * If these bodies are involved in any [Connection]s, those connections will be removed as well. This can affect the flux on other bodies.
+     * If this body is involved in any [Connection]s, those connections will be removed as well. This can affect the flux on other bodies.
      */
-    fun remove(vararg bodies_removed: ThermalBody<Locator>) {
-        bodies.removeAll(bodies_removed)
-        bodies_removed.forEach { body ->
-            // toList() here is just used to make a cheap copy
-            connectionMap[body].toList().forEach {
-                remove(it)
-            }
+    fun remove(body: ThermalBody<Locator>) {
+        bodies.remove(body)
+        connectionMap[body].toList().forEach {
+            remove(it)
         }
     }
 
     /**
-     * Remove [Connection]s from the simulation.
+     * Remove the [Connection] from the simulation.
      *
      * This does not affect the membership of the underlying [ThermalBodies](ThermalBody).
      */
-    fun remove(vararg connections_removed: Connection<Locator>) {
-        connections.removeAll(connections_removed)
-        connections_removed.forEach {
-            connectionMap[it.a].remove(it)
-            connectionMap[it.b].remove(it)
-        }
+    fun remove(connection: Connection<Locator>) {
+        connections.remove(connection)
+        connectionMap[connection.a].remove(connection)
+        connectionMap[connection.b].remove(connection)
     }
+
+    /**
+     * The "delta E" cache, a "double buffer" for the thermal step.
+     *
+     * This is held because the simulation can be run repeatedly in a given game loop, and it is best to keep it warm for that reason. Furthermore, while this could be stored on the [ThermalBody] itself, that would constitute an unnecessary implementation detail, subject to change.
+     *
+     * Keep this weak, so its persistence does not hold alive any ThermalBodies that have been removed.
+     */
+    protected val deltaE = WeakHashMap<ThermalBody<Locator>, Double>()
 
     /**
      * Run the simulation for a step.
@@ -284,22 +293,21 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
      * Flux between bodies (via [Connection]s) and with the [environment] are considered "simultaneously"--energy updates are deferred until the end.
      */
     fun step(dt: Double) {
-        val delta_E = mutableMapOf<ThermalBody<Locator>, Double>()
-        for (connection in connections) {
+        connections.forEach { connection ->
             val transfer = connection.connection.transfer(dt)
-            delta_E[connection.a] = delta_E.getOrDefault(connection.a, 0.0) + transfer
-            delta_E[connection.b] = delta_E.getOrDefault(connection.b, 0.0) - transfer
+            deltaE[connection.a] = deltaE.getOrDefault(connection.a, 0.0) + transfer
+            deltaE[connection.b] = deltaE.getOrDefault(connection.b, 0.0) - transfer
         }
-        for(body in bodies) {
+        bodies.forEach { body ->
             val temp = environment.temperature(body.locator)
             val cond = environment.conductance(body.locator)
             // FIXME: integrate this better with ThermalConnection above
-            val delta_T = temp.kelvin - body.mass.temperature.kelvin
-            val overall_cond = sqrt(cond * body.surfaceArea * body.mass.material.conductance)
-            val power = overall_cond * delta_T
-            delta_E[body] = delta_E.getOrDefault(body, 0.0) + power * dt
+            val deltaT = temp.kelvin - body.mass.temperature.kelvin
+            val overallCond = sqrt(cond * body.surfaceArea * body.mass.material.conductance)
+            val power = overallCond * deltaT
+            deltaE[body] = deltaE.getOrDefault(body, 0.0) + power * dt
         }
-        for((body, delta) in delta_E.entries) {
+        deltaE.entries.forEach { (body, delta) ->
             body.mass.energy += delta
         }
     }
