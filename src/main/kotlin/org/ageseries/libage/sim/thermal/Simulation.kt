@@ -7,6 +7,7 @@ import kotlin.math.sqrt
 interface ThermalBody<Locator> {
     val mass: ThermalMass
     val locator: Locator
+
     /** Surface area of this body w.r.t. the [ThermalEnvironment], nominally in m^2. */
     val surfaceArea: Double
 }
@@ -14,6 +15,7 @@ interface ThermalBody<Locator> {
 interface ThermalEnvironment<Locator> {
     /** The [Temperature] of the environment at this locator. */
     fun temperature(locator: Locator): Temperature
+
     /** How conductive the substance in the environment is at this locator. */
     fun conductance(locator: Locator): Double
 }
@@ -58,7 +60,11 @@ class ThermalSimulator<Locator>(val environment: ThermalEnvironment<Locator>) {
      *
      * The connection is automatically [add]ed to the simulation, as well as returned. The object can be used to [remove] it later.
      */
-    fun connect(a: ThermalBody<Locator>, b: ThermalBody<Locator>, params: ThermalConnectionParameters = ThermalConnectionParameters.DEFAULT): Connection<Locator> =
+    fun connect(
+        a: ThermalBody<Locator>,
+        b: ThermalBody<Locator>,
+        params: ThermalConnectionParameters = ThermalConnectionParameters.DEFAULT
+    ): Connection<Locator> =
         Connection(a, b, params).also {
             add(it)
         }
@@ -94,7 +100,7 @@ class ThermalSimulator<Locator>(val environment: ThermalEnvironment<Locator>) {
      *
      * Keep this weak, so its persistence does not hold alive any ThermalBodies that have been removed.
      */
-    protected val deltaE = WeakHashMap<ThermalBody<Locator>, Double>()
+    private val deltaE = WeakHashMap<ThermalBody<Locator>, Double>()
 
     /**
      * Run the simulation for a step.

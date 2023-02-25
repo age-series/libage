@@ -27,6 +27,7 @@ value class Temperature(val kelvin: Double) {
 
     operator fun plus(rhs: Temperature) = Temperature(kelvin + rhs.kelvin)
     operator fun minus(rhs: Temperature) = Temperature(kelvin - rhs.kelvin)
+
     // Would it make sense to multiply 2 temps?
     operator fun times(rhs: Double) = Temperature(kelvin * rhs)
     operator fun div(rhs: Double) = Temperature(kelvin / rhs)
@@ -59,7 +60,8 @@ class ThermalMass(
     /** Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE]. */
     energy: Double? = null,
     /** Mass, in kg. */
-    val mass: Double = 1.0) {
+    val mass: Double = 1.0
+) {
 
     var energy: Double = energy ?: (STANDARD_TEMPERATURE.kelvin * mass * material.specificHeat)
 
@@ -113,7 +115,7 @@ class ThermalConnection(
         // W/K
         val distCondA = a.material.thermalConductivity * contactPoint * distance
         val distCondB = b.material.thermalConductivity * (1.0 - contactPoint) * distance
-        val overallCond = (distCondA * distCondB * conductance).pow(1.0/3.0)
+        val overallCond = (distCondA * distCondB * conductance).pow(1.0 / 3.0)
         // W
         val power = deltaT * overallCond
         // J
