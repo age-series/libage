@@ -53,7 +53,7 @@ internal class ThermalTests {
         assert(a in sim.bodies)
         assert(b in sim.bodies)
         assert(c !in sim.bodies)
-        sim.remove(a, b)
+        listOf(a, b).forEach { sim.remove(it) }
         assert(a !in sim.bodies)
         assert(b !in sim.bodies)
         assert(c !in sim.bodies)
@@ -76,14 +76,14 @@ internal class ThermalTests {
         val b = TestBody(Loc(2), ThermalMass(Material.IRON))
         a.mass.temperature = STANDARD_TEMPERATURE
         b.mass.temperature = STANDARD_TEMPERATURE + A_BIT
-        sim.add(a, b)
-        val a_old = a.mass.temperature
-        val b_old = b.mass.temperature
+        listOf(a, b).forEach { sim.add(it) }
+        val aOld = a.mass.temperature
+        val bOld = b.mass.temperature
         sim.step(0.05)
         assert(a in sim.bodies)
         assert(b in sim.bodies)
-        assertEquals(a.mass.temperature, a_old)
-        assertEquals(b.mass.temperature, b_old)
+        assertEquals(a.mass.temperature, aOld)
+        assertEquals(b.mass.temperature, bOld)
     }
 
     @Test
@@ -93,21 +93,21 @@ internal class ThermalTests {
         val b = TestBody(Loc(2), ThermalMass(Material.IRON))
         val lesser = STANDARD_TEMPERATURE
         val greater = STANDARD_TEMPERATURE + A_BIT
-        for((a_temp, b_temp) in listOf(lesser to greater, greater to lesser)) {
+        listOf(lesser to greater, greater to lesser).forEach { (a_temp, b_temp) ->
             a.mass.temperature = a_temp
             b.mass.temperature = b_temp
-            val a_old = a.mass.temperature
-            val b_old = b.mass.temperature
+            val aOld = a.mass.temperature
+            val bOld = b.mass.temperature
             val conn = sim.connect(a, b)
             sim.step(0.05)
-            assertEquals(a_temp.compareTo(b_temp), a_old.compareTo(a.mass.temperature)) {"A old $a_old, now ${a.mass.temperature}" }
-            assertEquals(b_temp.compareTo(a_temp), b_old.compareTo(b.mass.temperature)) {"B old $b_old, now ${b.mass.temperature}" }
+            assertEquals(a_temp.compareTo(b_temp), aOld.compareTo(a.mass.temperature)) {"A old $aOld, now ${a.mass.temperature}" }
+            assertEquals(b_temp.compareTo(a_temp), bOld.compareTo(b.mass.temperature)) {"B old $bOld, now ${b.mass.temperature}" }
         }
     }
 
     @Test
     fun conductivity_proportional_to_connectivity() {
-        var last_increase: Temperature? = null
+        var lastIncrease: Temperature? = null
         for(it in 1..10) {
             val sim = Simulator(TestEnv(0.0))
             val cen = TestBody(Loc(0), ThermalMass(Material.IRON))
@@ -120,13 +120,13 @@ internal class ThermalTests {
             others.forEach {
                 sim.connect(cen, it)
             }
-            val cen_old = cen.mass.temperature
+            val cenOld = cen.mass.temperature
             sim.step(0.05)
-            val delta = cen.mass.temperature - cen_old
-            if(last_increase != null) {
-                assert(delta > last_increase!!) { "$delta !> $last_increase" }
+            val delta = cen.mass.temperature - cenOld
+            if(lastIncrease != null) {
+                assert(delta > lastIncrease!!) { "$delta !> $lastIncrease" }
             }
-            last_increase = delta
+            lastIncrease = delta
         }
     }
 
@@ -140,13 +140,13 @@ internal class ThermalTests {
         ))
         val a = TestBody(Loc(1), ThermalMass(Material.IRON))
         val b = TestBody(Loc(-1), ThermalMass(Material.IRON))
-        sim.add(a, b)
+        listOf(a, b).forEach { sim.add(it) }
         a.mass.temperature = STANDARD_TEMPERATURE
         b.mass.temperature = STANDARD_TEMPERATURE
-        val a_old = a.mass.temperature
-        val b_old = b.mass.temperature
+        val aOld = a.mass.temperature
+        val bOld = b.mass.temperature
         sim.step(0.05)
-        assert(a.mass.temperature > a_old)
-        assert(b.mass.temperature < b_old)
+        assert(a.mass.temperature > aOld)
+        assert(b.mass.temperature < bOld)
     }
 }
