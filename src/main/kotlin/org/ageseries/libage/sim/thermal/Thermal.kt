@@ -72,6 +72,9 @@ class Scale(
  */
 @JvmInline
 value class Temperature(val kelvin: Double) {
+    /**
+     * Return this temperature on the given [Scale].
+     */
     fun in_(scale: Scale): Double = scale.map(kelvin)
 
     operator fun plus(rhs: Temperature) = Temperature(kelvin + rhs.kelvin)
@@ -82,6 +85,9 @@ value class Temperature(val kelvin: Double) {
     override fun toString() = Scale.KELVIN.display(kelvin)
 
     companion object {
+        /**
+         * Return a Temperature given a measurement on a different [Scale].
+         */
         fun from(temp: Double, scale: Scale) = Temperature(scale.unmap(temp))
     }
 }
@@ -209,10 +215,20 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
     val bodies = mutableSetOf<ThermalBody<Locator>>()
     val connectionMap = mutableMultiMapOf<ThermalBody<Locator>, Connection<Locator>>()
 
+    /**
+     * Add some bodies to the simulation.
+     *
+     * Without connection, these bodies will still conduct from/to the [environment].
+     */
     fun add(vararg bodies_added: ThermalBody<Locator>) {
         bodies.addAll(bodies_added)
     }
 
+    /**
+     * Add some connections to the simulation.
+     *
+     * Generally, you would use [connect] instead.
+     */
     fun add(vararg connections_added: Connection<Locator>) {
         connections.addAll(connections_added)
         connections_added.forEach {
@@ -222,11 +238,21 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
         }
     }
 
+    /**
+     * Connect two [ThermalBodies](ThermalBody), with the given connection parameters for the underlying [ThermalConnection].
+     *
+     * The connection is automatically [add]ed to the simulation, as well as returned. The object can be used to [remove] it later.
+     */
     fun connect(a: ThermalBody<Locator>, b: ThermalBody<Locator>, params: ThermalConnectionParameters = ThermalConnectionParameters.DEFAULT): Connection<Locator> =
         Connection(a, b, params).also {
             add(it)
         }
 
+    /**
+     * Remove the bodies from the simulation.
+     *
+     * If these bodies are involved in any [Connection]s, those connections will be removed as well. This can affect the flux on other bodies.
+     */
     fun remove(vararg bodies_removed: ThermalBody<Locator>) {
         bodies.removeAll(bodies_removed)
         bodies_removed.forEach { body ->
@@ -237,6 +263,11 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
         }
     }
 
+    /**
+     * Remove [Connection]s from the simulation.
+     *
+     * This does not affect the membership of the underlying [ThermalBodies](ThermalBody).
+     */
     fun remove(vararg connections_removed: Connection<Locator>) {
         connections.removeAll(connections_removed)
         connections_removed.forEach {
@@ -245,6 +276,13 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
         }
     }
 
+    /**
+     * Run the simulation for a step.
+     *
+     * This does a discrete step of [dt] seconds on all bodies and connections in the simulation. Due to the approximations involved in the model (and the primitive integration used here), smaller step sizes are generally more stable.
+     *
+     * Flux between bodies (via [Connection]s) and with the [environment] are considered "simultaneously"--energy updates are deferred until the end.
+     */
     fun step(dt: Double) {
         val delta_E = mutableMapOf<ThermalBody<Locator>, Double>()
         for (connection in connections) {

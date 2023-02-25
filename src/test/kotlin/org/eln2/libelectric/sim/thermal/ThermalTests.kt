@@ -108,7 +108,7 @@ internal class ThermalTests {
     @Test
     fun conductivity_proportional_to_connectivity() {
         var last_increase: Temperature? = null
-        (1..10).forEach {
+        for(it in 1..10) {
             val sim = Simulator(TestEnv(0.0))
             val cen = TestBody(Loc(0), ThermalMass(Material.IRON))
             cen.mass.temperature = STANDARD_TEMPERATURE
