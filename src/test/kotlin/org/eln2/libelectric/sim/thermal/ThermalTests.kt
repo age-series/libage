@@ -1,5 +1,6 @@
 package org.eln2.libelectric.sim.thermal
 
+import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.thermal.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -11,7 +12,7 @@ internal class ThermalTests {
     @JvmInline
     value class Loc(val x: Int)
 
-    class TestBody(override val locator: Loc, override val mass: ThermalMass): ThermalBody<Loc> {
+    class TestBody(override val locator: Loc, override val mass: Mass): Simulator.Body<Loc> {
         override val surfaceArea: Double
             get() = 1.0
     }
@@ -21,7 +22,7 @@ internal class ThermalTests {
         val rightTemp: Temperature = STANDARD_TEMPERATURE,
         val leftTemp: Temperature = STANDARD_TEMPERATURE,
         val rightPoint: Loc = Loc(0),
-    ): Environment<Loc> {
+    ): Simulator.Environment<Loc> {
         override fun temperature(locator: Loc): Temperature =
             if(locator.x < rightPoint.x) {
                 leftTemp
@@ -35,9 +36,9 @@ internal class ThermalTests {
     @Test
     fun consistent_data_model() {
         val sim = Simulator(TestEnv(0.0))
-        val a = TestBody(Loc(0), ThermalMass(Material.IRON))
-        val b = TestBody(Loc(0), ThermalMass(Material.IRON))
-        val c = TestBody(Loc(0), ThermalMass(Material.IRON))
+        val a = TestBody(Loc(0), Mass(Material.IRON))
+        val b = TestBody(Loc(0), Mass(Material.IRON))
+        val c = TestBody(Loc(0), Mass(Material.IRON))
         assert(a !in sim.bodies)
         assert(b !in sim.bodies)
         assert(c !in sim.bodies)
@@ -72,8 +73,8 @@ internal class ThermalTests {
     @Test
     fun perfectly_isolated() {
         val sim = Simulator(TestEnv(0.0))
-        val a = TestBody(Loc(1), ThermalMass(Material.IRON))
-        val b = TestBody(Loc(2), ThermalMass(Material.IRON))
+        val a = TestBody(Loc(1), Mass(Material.IRON))
+        val b = TestBody(Loc(2), Mass(Material.IRON))
         a.mass.temperature = STANDARD_TEMPERATURE
         b.mass.temperature = STANDARD_TEMPERATURE + A_BIT
         listOf(a, b).forEach { sim.add(it) }
@@ -89,8 +90,8 @@ internal class ThermalTests {
     @Test
     fun second_law() {
         val sim = Simulator(TestEnv(0.0))  // Don't conduct from/to env
-        val a = TestBody(Loc(1), ThermalMass(Material.IRON))
-        val b = TestBody(Loc(2), ThermalMass(Material.IRON))
+        val a = TestBody(Loc(1), Mass(Material.IRON))
+        val b = TestBody(Loc(2), Mass(Material.IRON))
         val lesser = STANDARD_TEMPERATURE
         val greater = STANDARD_TEMPERATURE + A_BIT
         listOf(lesser to greater, greater to lesser).forEach { (a_temp, b_temp) ->
@@ -110,10 +111,10 @@ internal class ThermalTests {
         var lastIncrease: Temperature? = null
         for(it in 1..10) {
             val sim = Simulator(TestEnv(0.0))
-            val cen = TestBody(Loc(0), ThermalMass(Material.IRON))
+            val cen = TestBody(Loc(0), Mass(Material.IRON))
             cen.mass.temperature = STANDARD_TEMPERATURE
             val others = (1..it).map {
-                TestBody(Loc(it), ThermalMass(Material.IRON)).also {
+                TestBody(Loc(it), Mass(Material.IRON)).also {
                     it.mass.temperature = STANDARD_TEMPERATURE + A_BIT
                 }
             }
@@ -138,8 +139,8 @@ internal class ThermalTests {
             STANDARD_TEMPERATURE - A_BIT,
             Loc(0),
         ))
-        val a = TestBody(Loc(1), ThermalMass(Material.IRON))
-        val b = TestBody(Loc(-1), ThermalMass(Material.IRON))
+        val a = TestBody(Loc(1), Mass(Material.IRON))
+        val b = TestBody(Loc(-1), Mass(Material.IRON))
         listOf(a, b).forEach { sim.add(it) }
         a.mass.temperature = STANDARD_TEMPERATURE
         b.mass.temperature = STANDARD_TEMPERATURE
