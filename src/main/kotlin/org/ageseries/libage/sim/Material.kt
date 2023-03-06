@@ -7,7 +7,7 @@ package org.ageseries.libage.sim
  */
 class Material(
     /** Intrinsic linear electrical resistance, in Ohm/m. */
-    val electricalResisitivity: Double,
+    val electricalResistivity: Double,
     /** Intrinsic linear thermal conductivity (on one axis), in W/mK. */
     val thermalConductivity: Double,
     /** Intrinsic specific heat capacity, in J/Kkg. */
@@ -16,7 +16,7 @@ class Material(
     val density: Double,
 ) {
     override fun toString() =
-        "<Mat ${electricalResisitivity}Ohm/m ${thermalConductivity}W/mK ${specificHeat}J/Kkg ${density}g/cm^3>"
+        "<Mat ${electricalResistivity}Ohm/m ${thermalConductivity}W/mK ${specificHeat}J/Kkg ${density}g/cm^3>"
 
     companion object {
         // Good sources for this information:
