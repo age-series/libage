@@ -48,6 +48,9 @@ class PowerVoltageSource: VoltageSource(), PowerSource {
         get() = potential
         set(value) { potential = value }
     override var targetAbsMax: Double? = null
+    var potentialMax: Double?
+        get() = targetAbsMax
+        set(value) { targetAbsMax = value }
     override val powerNow: Double
         get() = power
     override var powerIdeal: Double = 0.0
@@ -59,6 +62,9 @@ class PowerCurrentSource: CurrentSource(), PowerSource {
         get() = current
         set(value) { current = value }
     override var targetAbsMax: Double? = null
+    var currentMax: Double?
+        get() = targetAbsMax
+        set(value) { targetAbsMax = value }
     override val powerNow: Double
         get() = power
     override var powerIdeal: Double = 0.0
