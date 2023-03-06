@@ -24,7 +24,7 @@ value class Temperature(val kelvin: Double) {
 
     operator fun compareTo(rhs: Temperature) = kelvin.compareTo(rhs.kelvin)
 
-    override fun toString() = Thermal.KELVIN.display(kelvin)
+    override fun toString() = ThermalUnits.KELVIN.display(kelvin)
 
     companion object {
         /**
