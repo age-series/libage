@@ -10,17 +10,19 @@ import kotlin.math.sqrt
 /**
  * A temperature.
  *
- * The inner type is always Kelvin; conversions are available as properties.
+ * The inner unit is always Kelvin; conversions are available as properties and methods.
  */
 @JvmInline
 value class Temperature(val kelvin: Double) {
     /**
      * Return this temperature on the given [Scale].
      */
-    fun in_(scale: Scale): Double = scale.map(kelvin)
+    fun to(scale: Scale): Double = scale.map(kelvin)
 
     operator fun plus(rhs: Temperature) = Temperature(kelvin + rhs.kelvin)
     operator fun minus(rhs: Temperature) = Temperature(kelvin - rhs.kelvin)
+    operator fun times(rhs: Double) = Temperature(kelvin * rhs)
+    operator fun div(rhs: Double) = Temperature(kelvin / rhs)
 
     operator fun compareTo(rhs: Temperature) = kelvin.compareTo(rhs.kelvin)
 
@@ -40,10 +42,12 @@ value class Temperature(val kelvin: Double) {
  * This is the "ST" of STP, as reported in laboratory conditions.
  *
  * This is used as the default temperature for thermal masses.
+ *
+ * It is equal to 0 degrees Celsius.
  */
 val STANDARD_TEMPERATURE: Temperature = Temperature(273.15)
 
-class Mass(
+class ThermalMass(
     /** The material of this mass, used for its thermal properties. */
     val material: Material,
     /** Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE]. */
@@ -64,7 +68,7 @@ class Mass(
             energy = value.kelvin * mass * material.specificHeat
         }
 
-    override fun toString() = "<Mass $material ${mass}kg ${energy}J $temperature>"
+    override fun toString() = "<Thermal Mass $material ${mass}kg ${energy}J $temperature>"
 }
 
 data class ConnectionParameters(
@@ -82,9 +86,9 @@ data class ConnectionParameters(
 
 class Connection(
     /** One of the connected masses. */
-    val a: Mass,
+    val a: ThermalMass,
     /** The other connected mass. */
-    val b: Mass,
+    val b: ThermalMass,
     /** Thermal parameters of this connection. */
     params: ConnectionParameters = ConnectionParameters.DEFAULT,
 ) {
@@ -115,7 +119,7 @@ class Connection(
 
 class Simulator<Locator>(val environment: Environment<Locator>) {
     interface Body<Locator> {
-        val mass: Mass
+        val mass: ThermalMass
         val locator: Locator
 
         /** Surface area of this body w.r.t. the [Environment], nominally in m^2. */
