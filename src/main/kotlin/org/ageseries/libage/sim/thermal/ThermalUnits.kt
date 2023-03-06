@@ -7,7 +7,7 @@ import org.ageseries.libage.sim.Scale
  *
  * All scales are defined relative to Kelvin, which is the package-wide base unit.
  */
-object Thermal {
+object ThermalUnits {
     /**
      * Kelvin; absolute zero, with steps of a hundredth of a grade.
      *
