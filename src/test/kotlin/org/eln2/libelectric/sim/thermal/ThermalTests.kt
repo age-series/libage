@@ -4,6 +4,7 @@ import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.thermal.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import kotlin.math.abs
 
 internal class ThermalTests {
     companion object {
@@ -149,5 +150,47 @@ internal class ThermalTests {
         sim.step(0.05)
         assert(a.mass.temperature > aOld)
         assert(b.mass.temperature < bOld)
+    }
+
+    @Test
+    fun equilibrium() {
+        val sim = Simulator(TestEnv(0.0))
+        val a = TestBody(Loc(0), ThermalMass(Material.IRON))
+        val b = TestBody(Loc(1), ThermalMass(Material.IRON))
+        a.mass.temperature = STANDARD_TEMPERATURE
+        b.mass.temperature = STANDARD_TEMPERATURE + A_BIT
+        sim.connect(a, b)
+        for(step in 0 until 1000) {
+            sim.step(1.0)
+            assert(a.mass.temperature.kelvin >= 0.0) { "negative energy: $a" }
+            assert(b.mass.temperature.kelvin >= 0.0) { "negative energy: $b" }
+            println("${b.mass.temperature.kelvin - a.mass.temperature.kelvin},${a.mass.temperature},${b.mass.temperature}")
+            if(abs(a.mass.temperature.kelvin - b.mass.temperature.kelvin) < 1e-9) {
+                println("equalized at $step: $a = $b")
+                return
+            }
+        }
+        error("failed to equalize: $a, $b")
+    }
+
+    @Test
+    fun astronomical() {
+        val sim = Simulator(TestEnv(0.0))
+        val a = TestBody(Loc(0), ThermalMass(Material.IRON))
+        val b = TestBody(Loc(1), ThermalMass(Material.IRON))
+        a.mass.temperature = STANDARD_TEMPERATURE * 1000.0
+        b.mass.temperature = Temperature(0.0)
+        sim.connect(a, b)
+        for(step in 0 until 1000) {
+            sim.step(1.0)
+            assert(a.mass.temperature.kelvin >= 0.0) { "negative energy: $a" }
+            assert(b.mass.temperature.kelvin >= 0.0) { "negative energy: $b" }
+            println("${b.mass.temperature.kelvin - a.mass.temperature.kelvin},${a.mass.temperature},${b.mass.temperature}")
+            if(abs(a.mass.temperature.kelvin - b.mass.temperature.kelvin) < 1e-9) {
+                println("equalized at $step: $a = $b")
+                return
+            }
+        }
+        error("failed to equalize: $a, $b")
     }
 }
