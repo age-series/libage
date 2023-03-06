@@ -10,21 +10,23 @@ import kotlin.math.sqrt
 /**
  * A temperature.
  *
- * The inner type is always Kelvin; conversions are available as properties.
+ * The inner unit is always Kelvin; conversions are available as properties and methods.
  */
 @JvmInline
 value class Temperature(val kelvin: Double) {
     /**
      * Return this temperature on the given [Scale].
      */
-    fun in_(scale: Scale): Double = scale.map(kelvin)
+    fun to(scale: Scale): Double = scale.map(kelvin)
 
     operator fun plus(rhs: Temperature) = Temperature(kelvin + rhs.kelvin)
     operator fun minus(rhs: Temperature) = Temperature(kelvin - rhs.kelvin)
+    operator fun times(rhs: Double) = Temperature(kelvin * rhs)
+    operator fun div(rhs: Double) = Temperature(kelvin / rhs)
 
     operator fun compareTo(rhs: Temperature) = kelvin.compareTo(rhs.kelvin)
 
-    override fun toString() = Scale.Thermal.KELVIN.display(kelvin)
+    override fun toString() = ThermalUnits.KELVIN.display(kelvin)
 
     companion object {
         /**
@@ -33,16 +35,19 @@ value class Temperature(val kelvin: Double) {
         fun from(temp: Double, scale: Scale) = Temperature(scale.unmap(temp))
     }
 }
+
 /**
  * "Standard" temperature, in Kelvin.
  *
  * This is the "ST" of STP, as reported in laboratory conditions.
  *
  * This is used as the default temperature for thermal masses.
+ *
+ * It is equal to 0 degrees Celsius.
  */
 val STANDARD_TEMPERATURE: Temperature = Temperature(273.15)
 
-class Mass(
+class ThermalMass(
     /** The material of this mass, used for its thermal properties. */
     val material: Material,
     /** Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE]. */
@@ -51,6 +56,7 @@ class Mass(
     val mass: Double = 1.0,
 ) {
     var energy: Double = energy ?: (STANDARD_TEMPERATURE.kelvin * mass * material.specificHeat)
+
     /**
      * Temperature of this mass, in K.
      *
@@ -62,7 +68,7 @@ class Mass(
             energy = value.kelvin * mass * material.specificHeat
         }
 
-    override fun toString() = "<Mass $material ${mass}kg ${energy}J $temperature>"
+    override fun toString() = "<Thermal Mass $material ${mass}kg ${energy}J $temperature>"
 }
 
 data class ConnectionParameters(
@@ -80,9 +86,9 @@ data class ConnectionParameters(
 
 class Connection(
     /** One of the connected masses. */
-    val a: Mass,
+    val a: ThermalMass,
     /** The other connected mass. */
-    val b: Mass,
+    val b: ThermalMass,
     /** Thermal parameters of this connection. */
     params: ConnectionParameters = ConnectionParameters.DEFAULT,
 ) {
@@ -91,6 +97,7 @@ class Connection(
     val conductance = params.conductance
 
     override fun toString() = "<Conn $a $b ${distance}m($contactPoint) ${conductance}W/K>"
+
     /**
      * Returns the change in energy, added to [a] and subtracted from [b], which would equilibriate the connected thermal masses over the given period of time [dt] (in s).
      *
@@ -102,7 +109,7 @@ class Connection(
         // W/K
         val distCondA = a.material.thermalConductivity * contactPoint * distance
         val distCondB = b.material.thermalConductivity * (1.0 - contactPoint) * distance
-        val overallCond = (distCondA * distCondB * conductance).pow(1.0/3.0)
+        val overallCond = (distCondA * distCondB * conductance).pow(1.0 / 3.0)
         // W
         val power = deltaT * overallCond
         // J
@@ -112,8 +119,9 @@ class Connection(
 
 class Simulator<Locator>(val environment: Environment<Locator>) {
     interface Body<Locator> {
-        val mass: Mass
+        val mass: ThermalMass
         val locator: Locator
+
         /** Surface area of this body w.r.t. the [Environment], nominally in m^2. */
         val surfaceArea: Double
     }
@@ -121,6 +129,7 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
     interface Environment<Locator> {
         /** The [Temperature] of the environment at this locator. */
         fun temperature(locator: Locator): Temperature
+
         /** How conductive the substance in the environment is at this locator. */
         fun conductance(locator: Locator): Double
     }
@@ -164,7 +173,11 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
      *
      * The connection is automatically [add]ed to the simulation, as well as returned. The object can be used to [remove] it later.
      */
-    fun connect(a: Body<Locator>, b: Body<Locator>, params: ConnectionParameters = ConnectionParameters.DEFAULT): Connection<Locator> =
+    fun connect(
+        a: Body<Locator>,
+        b: Body<Locator>,
+        params: ConnectionParameters = ConnectionParameters.DEFAULT
+    ): Connection<Locator> =
         Connection(a, b, params).also {
             add(it)
         }
