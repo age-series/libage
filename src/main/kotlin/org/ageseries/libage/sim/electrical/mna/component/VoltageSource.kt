@@ -8,7 +8,7 @@ import org.ageseries.libage.sim.electrical.mna.VSource
  *
  * This simply proposes one [VSource] to the [Circuit] in which it is contained. Its potential is controlled via [potential].
  */
-class VoltageSource : Port() {
+open class VoltageSource : Port() {
     override var name: String = "vs"
     override val imageName = "vsource"
     override val vsCount = 1
@@ -28,6 +28,9 @@ class VoltageSource : Port() {
      */
     val current: Double
         get() = if (isInCircuit) vsources[0].current else 0.0
+
+    val power: Double
+        get() = potential * current
 
     override fun detail(): String {
         return "[voltage source ${potential}V, ${current}A, ${potential * current}W]"
