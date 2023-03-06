@@ -5,6 +5,7 @@ import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.Scale
 import java.util.*
 import kotlin.math.pow
+import kotlin.math.sign
 import kotlin.math.sqrt
 
 /**
@@ -64,13 +65,15 @@ class ThermalMass(
 ) {
     var energy: Double = energy ?: (STANDARD_TEMPERATURE.kelvin * mass * material.specificHeat)
 
+    fun temperatureAt(e: Double): Temperature = Temperature(e / mass / material.specificHeat)
+
     /**
      * Temperature of this mass, in K.
      *
      * Setting this changes the [energy].
      */
     var temperature: Temperature
-        get() = Temperature(energy / mass / material.specificHeat)
+        get() = temperatureAt(energy)
         set(value) {
             energy = value.kelvin * mass * material.specificHeat
         }
@@ -85,6 +88,10 @@ data class ConnectionParameters(
     val distance: Double = 1.0,
     /** How far along the line segment from [Connection.a] to [Connection.b] the contact point is. Affects how much [Connection.a]'s conductance dominates over [Connection.b]'s. Keep this between 0.0 and 1.0 inclusive. */
     val contactPoint: Double = 0.5,
+    /**
+     * Energy lost "to the environment" from this connnection. Implements the Second Law, and has a direct impact on the stability of the simulation.
+     */
+    val efficiency: Double = 0.99,
 ) {
     companion object {
         val DEFAULT = ConnectionParameters()
@@ -102,15 +109,18 @@ class Connection(
     val contactPoint = params.contactPoint
     val distance = params.distance
     val conductance = params.conductance
+    val efficiency = params.efficiency
+
+    var prevFlux: Double = 0.0
 
     override fun toString() = "<Conn $a $b ${distance}m($contactPoint) ${conductance}W/K>"
 
     /**
-     * Returns the change in energy, added to [a] and subtracted from [b], which would equilibriate the connected thermal masses over the given period of time [dt] (in s).
+     * Returns the energies to add to [a] and [b] (in that order), which would attempt to equilibriate the connected thermal masses over the given period of time [dt] (in s).
      *
      * For this to be stable, [dt] must be held relatively small, since this is a linear approximation to an exponential curve--otherwise, overshoot may be observed.
      */
-    fun transfer(dt: Double): Double {
+    fun transfer(dt: Double): Pair<Double, Double> {
         // Kelvin
         val deltaT = b.temperature.kelvin - a.temperature.kelvin
         // W/K
@@ -120,7 +130,28 @@ class Connection(
         // W
         val power = deltaT * overallCond
         // J
-        return power * dt
+        val energy = power * dt
+        // TODO: find the right way to calculate this
+        // val critDamp = sqrt((a.mass + b.mass) * overallCond) * 2.0
+        val critDamp = 1.0
+        val dTerm = prevFlux * critDamp
+        prevFlux = energy
+        var toA = energy - dTerm
+        var toB = -energy + dTerm
+        if(toA > 0.0) { toA *= efficiency }
+        if(toB > 0.0) { toB *= efficiency }
+        /*
+        // Detect an inflection point--if the energies would collide, assume they equilibriate.
+        val newTempA = a.temperatureAt(a.energy + energy).kelvin
+        val newTempB = b.temperatureAt(b.energy - energy).kelvin
+        if(deltaT.sign != (newTempB - newTempA).sign) {
+            // Distribute the energies at equilibrium.
+            val totalE = a.energy + b.energy
+            val eqAEnergy = totalE * (a.mass / b.mass) * (a.material.specificHeat / b.material.specificHeat)
+            return eqAEnergy - a.energy
+        }
+         */
+        return toA to toB
     }
 }
 
@@ -230,9 +261,9 @@ class Simulator<Locator>(val environment: Environment<Locator>) {
      */
     fun step(dt: Double) {
         connections.forEach { connection ->
-            val transfer = connection.connection.transfer(dt)
-            deltaE[connection.a] = deltaE.getOrDefault(connection.a, 0.0) + transfer
-            deltaE[connection.b] = deltaE.getOrDefault(connection.b, 0.0) - transfer
+            val (toA, toB) = connection.connection.transfer(dt)
+            deltaE[connection.a] = deltaE.getOrDefault(connection.a, 0.0) + toA
+            deltaE[connection.b] = deltaE.getOrDefault(connection.b, 0.0) + toB
         }
         bodies.forEach { body ->
             val temp = environment.temperature(body.locator)
