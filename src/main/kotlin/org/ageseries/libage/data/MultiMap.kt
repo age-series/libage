@@ -130,7 +130,7 @@ class MutableSetMapMultiMap<K, V>(iter: Iterator<Pair<K, V>>) : MutableMultiMap<
         iter.forEach { (k, v) -> set(k, v) }
     }
 
-    override operator fun get(k: K): MutableSet<V> = map.getOrPut(k, { mutableSetOf() })
+    override operator fun get(k: K): MutableSet<V> = map.getOrPut(k) { mutableSetOf() }
 
     override fun clear(k: K) {
         map.remove(k)

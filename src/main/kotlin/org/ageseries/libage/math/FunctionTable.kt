@@ -1,5 +1,29 @@
 package org.ageseries.libage.math
 
+fun Double.lerp(zero: Double, one: Double) =
+    this * one + (1.0 - this) * zero
+
+interface Extrapolator {
+    fun extrapolate(u: Double, origin: Double, slope: Double): Double
+}
+/**
+ * Selects which method of extrapolation to use when trying to get a value outside of the given range.
+ */
+enum class ExtrapolationMode: Extrapolator {
+    ClosestValue {
+        override fun extrapolate(u: Double, origin: Double, slope: Double): Double =
+            origin
+    },
+    Linear {
+        override fun extrapolate(u: Double, origin: Double, slope: Double): Double =
+            origin + u * slope
+    }
+}
+
+interface Piece: IFunction {
+    fun tangent(u: Double): Double
+}
+
 /**
  * Function Table
  *
@@ -16,20 +40,13 @@ open class FunctionTable(_point: DoubleArray, _xMax: Double, private val mode: E
     var xMax: Double = _xMax
 
     /**
-     * Selects which method of extrapolation to use when trying to get a value outside of the given range.
-     */
-    enum class ExtrapolationMode {
-        ClosestValue, Linear
-    }
-
-    /**
      * getValue: Given a value, get the corresponding value, linearly fit between two closest points on either side.
      * Note that this is an interpolation. Extrapolation will return null.
      * @param x: Given value
      * @return y: Value for that x, linearly fit between the two closest points on either side if valid; otherwise
      * 	extrapolate using the method specified when creating this FunctionTable.
      */
-    override fun getValue(x: Double): Double {
+    override fun evaluate(x: Double): Double {
         val lx = x.div(xMax)
         return when {
             lx < 0.0 -> { // Extrapolation to the left.
