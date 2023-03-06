@@ -13,6 +13,7 @@ import org.ageseries.libage.sim.electrical.mna.component.*
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import kotlin.collections.ArrayList
+import kotlin.math.abs
 
 /**
  * The default format for debug matrix printouts from Circuits.
@@ -134,6 +135,8 @@ class Circuit {
      * Circuit does not use this directly, but some [Component]s use it to determine if they should stop iterating. Some tests also use this to determine if the value under test is "close enough".
      */
     var slack = 0.001
+
+    fun nearlyZero(d: Double): Boolean = abs(d) <= slack
 
     /**
      * Set if the last step was successful.
