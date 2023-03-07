@@ -1,11 +1,23 @@
 package org.ageseries.libage.sim.thermal
 
 import org.ageseries.libage.data.mutableMultiMapOf
+import org.ageseries.libage.sim.CIE
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.Scale
 import java.util.*
+import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sqrt
+
+/**
+ * The Stefan-Boltzmann Constant, in W/m^2K^4, the proportionality constant of emission power of a black-body radiator.
+ */
+const val STEFAN_BOLTZMANN_CONSTANT: Double = 5.670373e-8
+
+/**
+ * The number of steradians subtended by a sphere--the solid angle of a perfectly-isotropic transmitter.
+ */
+const val FULL_STERADIANS: Double = PI * 4
 
 /**
  * A temperature.
@@ -28,12 +40,40 @@ value class Temperature(val kelvin: Double) {
 
     override fun toString() = ThermalUnits.KELVIN.display(kelvin)
 
-    companion object {
-        /**
-         * Return a Temperature given a measurement on a different [Scale].
-         */
-        fun from(temp: Double, scale: Scale) = Temperature(scale.unmap(temp))
-    }
+    /**
+     * Emission power of a surface with the given area at this temperature, in W.
+     *
+     * This isn't going to be equivalent to the "brightness", since one needs to take the spectral density and map it
+     * through a "luminosity function". However, if one is feeling lazy, you can just equate this to lumens, and divide
+     * through by [FULL_STERADIANS] to get candela.
+     */
+    fun emissionPower(surfaceArea: Double): Double =
+        kelvin.pow(4) * surfaceArea * STEFAN_BOLTZMANN_CONSTANT
+
+    /**
+     * Emission color of a black body with this temperature.
+     *
+     * No correction for power is performed, so the result is always at maximum brightness. Any real use should consider
+     * scaling brightness appropriately by [emissionPower].
+     */
+    val emissionColor: CIE.XYZ31
+        get() = kelvin.coerceIn(1000.0, 15000.0).toFloat().let { t ->
+            val t2 = t * t
+            CIE.UVW60.fromuvY(
+                (0.860117757f + 1.54118254e-4f * t + 1.28641212e-7f * t2) /
+                        (1f + 8.42420235e-4f * t + 7.08145163e-7f * t2),
+                (0.317398726f + 4.22806245e-5f * t + 4.20481691e-8f * t2) /
+                        (1f - 2.89741816e-5f * t + 1.61456063e-7f * t2),
+                1f,
+            ).asXYZ31
+        }
+
+        companion object {
+            /**
+             * Return a Temperature given a measurement on a different [Scale].
+             */
+            fun from(temp: Double, scale: Scale) = Temperature(scale.unmap(temp))
+        }
 }
 
 /**
