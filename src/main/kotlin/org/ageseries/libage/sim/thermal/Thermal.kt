@@ -5,7 +5,6 @@ import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.Scale
 import java.util.*
 import kotlin.math.pow
-import kotlin.math.sign
 import kotlin.math.sqrt
 
 /**
@@ -86,6 +85,8 @@ data class ConnectionParameters(
     val conductance: Double = 1.0,
     /** How long the connection is between the two masses--which affects the transfer rate. Measured in m. */
     val distance: Double = 1.0,
+    /** The "scale" of power conducted along this connection. If constant density is assumed, such that mass and volume are related, this is linear in contact area, thus the name. */
+    val area: Double = 1.0,
     /** How far along the line segment from [Connection.a] to [Connection.b] the contact point is. Affects how much [Connection.a]'s conductance dominates over [Connection.b]'s. Keep this between 0.0 and 1.0 inclusive. */
     val contactPoint: Double = 0.5,
     /**
@@ -108,6 +109,7 @@ class Connection(
 ) {
     val contactPoint = params.contactPoint
     val distance = params.distance
+    val area = params.area
     val conductance = params.conductance
     val efficiency = params.efficiency
 
@@ -126,7 +128,7 @@ class Connection(
         // W/K
         val distCondA = a.material.thermalConductivity * contactPoint * distance
         val distCondB = b.material.thermalConductivity * (1.0 - contactPoint) * distance
-        val overallCond = (distCondA * distCondB * conductance).pow(1.0 / 3.0)
+        val overallCond = area * (distCondA * distCondB * conductance).pow(1.0 / 3.0)
         // W
         val power = deltaT * overallCond
         // J
@@ -134,7 +136,7 @@ class Connection(
         // TODO: find the right way to calculate this
         // val critDamp = sqrt((a.mass + b.mass) * overallCond) * 2.0
         val critDamp = 1.0
-        val dTerm = prevFlux * critDamp
+        val dTerm = prevFlux * critDamp * dt
         prevFlux = energy
         var toA = energy - dTerm
         var toB = -energy + dTerm

@@ -100,7 +100,7 @@ internal class ThermalTests {
             b.mass.temperature = b_temp
             val aOld = a.mass.temperature
             val bOld = b.mass.temperature
-            val conn = sim.connect(a, b)
+            sim.connect(a, b)
             sim.step(0.05)
             assertEquals(a_temp.compareTo(b_temp), aOld.compareTo(a.mass.temperature)) {"A old $aOld, now ${a.mass.temperature}" }
             assertEquals(b_temp.compareTo(a_temp), bOld.compareTo(b.mass.temperature)) {"B old $bOld, now ${b.mass.temperature}" }
@@ -126,7 +126,7 @@ internal class ThermalTests {
             sim.step(0.05)
             val delta = cen.mass.temperature - cenOld
             if(lastIncrease != null) {
-                assert(delta > lastIncrease!!) { "$delta !> $lastIncrease" }
+                assert(delta > lastIncrease) { "$delta !> $lastIncrease" }
             }
             lastIncrease = delta
         }
