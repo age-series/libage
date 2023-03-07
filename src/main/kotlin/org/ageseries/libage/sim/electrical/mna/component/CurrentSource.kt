@@ -7,7 +7,7 @@ import org.ageseries.libage.sim.electrical.mna.Circuit
  *
  * This simply modifies the [Circuit.knowns] vector of two nodes to represent two independent currents--one in, and one out, thus satisfying the [Port] condition. Its current is controlled via [current].
  */
-open class CurrentSource : Port() {
+open class CurrentSource : Port(), IPower {
     override var name: String = "is"
 
     /**
@@ -20,7 +20,7 @@ open class CurrentSource : Port() {
             field = value
         }
 
-    val power: Double get() = current * potential
+    override val power: Double get() = current * potential
 
     override fun detail(): String {
         return "[current source ${current}A, ${potential}V, ${potential * current}W]"

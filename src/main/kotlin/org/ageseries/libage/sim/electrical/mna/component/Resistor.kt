@@ -8,7 +8,7 @@ import org.ageseries.libage.sim.electrical.mna.Circuit
  *
  * The most important field is arguably [resistance]; updating this value will result in [Circuit.matrixChanged].
  */
-open class Resistor : Port() {
+open class Resistor : Port(), IPower {
     override var name: String = "r"
     override val imageName = "resistor"
 
@@ -39,8 +39,7 @@ open class Resistor : Port() {
     /**
      * Returns the power dissipated by this resistor, as a function of its current and potential, in Watts.
      */
-    open val power: Double
-        get() = current * potential
+    override val power: Double get() = current * potential
 
     override fun detail(): String {
         return "[resistor $name: ${potential}v, ${current}A, ${resistance}Ω, ${power}W]"
