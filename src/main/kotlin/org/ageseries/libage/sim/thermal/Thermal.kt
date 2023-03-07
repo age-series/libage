@@ -5,7 +5,6 @@ import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.Scale
 import java.util.*
 import kotlin.math.pow
-import kotlin.math.sign
 import kotlin.math.sqrt
 
 /**
@@ -134,7 +133,7 @@ class Connection(
         // TODO: find the right way to calculate this
         // val critDamp = sqrt((a.mass + b.mass) * overallCond) * 2.0
         val critDamp = 1.0
-        val dTerm = prevFlux * critDamp
+        val dTerm = prevFlux * critDamp * dt
         prevFlux = energy
         var toA = energy - dTerm
         var toB = -energy + dTerm
