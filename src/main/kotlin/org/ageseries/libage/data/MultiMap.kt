@@ -163,7 +163,8 @@ class MutableSetMapMultiMap<K, V>(iter: Iterator<Pair<K, V>>) : MutableMultiMap<
 /**
  * View a MutableMultiMap as a MultiMap, essentially removing mutability from the interface.
  */
-class ImmutableMultiMapView<K, V>(val inner: MutableMultiMap<K, V>) : MultiMap<K, V> {
+@JvmInline
+value class ImmutableMultiMapView<K, V>(val inner: MutableMultiMap<K, V>) : MultiMap<K, V> {
     override inline fun contains(k: K): Boolean = k in inner
     override inline fun get(k: K): Set<V> = inner[k]
     override inline fun one(k: K): V? = inner.one(k)
