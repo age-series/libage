@@ -5,6 +5,7 @@ import org.ageseries.libage.data.emptyBiMap
 import org.ageseries.libage.data.mutableBiMapOf
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 internal class BiMapTest {
     @Test
@@ -39,11 +40,19 @@ internal class BiMapTest {
         assertEquals(bm.backward['A'], 1)
         assertEquals(bm.backward['B'], 2)
         assertEquals(bm.backward['C'], 3)
-        bm.add(1, 'B')
+        bm.addOrReplace(1, 'B')
         assertEquals(bm.size, 2)
         assertEquals(bm.forward[1], 'B')
         assertEquals(bm.forward[3], 'C')
         assertEquals(bm.backward['B'], 1)
         assertEquals(bm.backward['C'], 3)
+    }
+
+    @Test
+    fun replacementError() {
+        val bm = mutableBiMapOf(1 to 'A', 2 to 'B')
+        assertThrows<IllegalStateException> {
+            bm.add(1, 'B')
+        }
     }
 }

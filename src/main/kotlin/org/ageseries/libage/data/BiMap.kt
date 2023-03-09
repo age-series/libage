@@ -57,9 +57,17 @@ interface MutableBiMap<F, B>: BiMap<F, B> {
      * the guarantees above.
      */
     /**
-     * Add a bijection from [f] to [b].
+     * Add a bijection from [f] to [b], returning true iff some bijection had to be replaced.
      */
-    fun add(f: F, b: B)
+    fun addOrReplace(f: F, b: B): Boolean
+
+    /**
+     * Add a bijection from [f] to [b]. If this replaces some other bijection, raise an error.
+     */
+    fun add(f: F, b: B) {
+        if(forward[f] != null || backward[b] != null) error("would replace a bijection")
+        addOrReplace(f, b)  // assert not this
+    }
 
     /**
      * Remove [f], and, if mapped to some `b`, any bijection between it and `b`.
@@ -98,18 +106,21 @@ class MutableMapPairBiMap<F, B>(pairs: Iterator<Pair<F, B>>): MutableBiMap<F, B>
     // Order important here too--the maps have to be initialized before this constructor
     init {
         for((f, b) in pairs) {
-            add(f, b)
+            addOrReplace(f, b)
         }
     }
 
-    override fun add(f: F, b: B) {
+    override fun addOrReplace(f: F, b: B): Boolean =
         // Break existing links
-        forward[f]?.also { ob -> backward.remove(ob) }
-        backward[b]?.also { of -> forward.remove(of) }
-        // Add current links
-        forward[f] = b
-        backward[b] = f
-    }
+        (forward[f]?.also { ob -> backward.remove(ob) } != null)
+        .let {
+            // Order is important! || short-circuits, so do the actual change first.
+            backward[b]?.also { of -> forward.remove(of) } != null || it
+        }.also {
+            // Add current links
+            forward[f] = b
+            backward[b] = f
+        }
 
     override fun removeForward(f: F): Boolean =
         forward.remove(f).also {
