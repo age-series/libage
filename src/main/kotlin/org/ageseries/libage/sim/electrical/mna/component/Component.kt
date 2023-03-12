@@ -305,6 +305,21 @@ abstract class Component : IDetail {
  * By virtue of upholding the Port Condition, the two involved Nodes are often given special names, a "positive" and "negative" terminal ([pos] and [neg]), across which the potential can be sensibly measured. By convention, the potential is positive when [pos]' potential is greater than [neg]. (If you know the resistance, like [Resistor]s do, the power dissipated can then be summarily computed.)
  */
 abstract class Port : Component() {
+    companion object {
+        /**
+         * The pin number of the "negative" potential side of the port in forward bias.
+         *
+         * This is arbitrary, but chosen to agree with Falstad.
+         */
+        const val NEG_INDEX: Int = 0
+
+        /**
+         * The pin number of the "negative" potential side of the port in forward bias.
+         *
+         * This is arbitrary, but chosen to agree with Falstad.
+         */
+        const val POS_INDEX: Int = 1
+    }
     /**
      * A Port is, by definition, two nodes; thus, this cannot be overridden.
      */
@@ -317,7 +332,7 @@ abstract class Port : Component() {
      * By arbitrary convention, for compatibility with the Falstad circuit format, this is the second node.
      */
     open val pos: Node?
-        get() = node(1)
+        get() = node(POS_INDEX)
 
     /**
      * Get the negative [Node].
@@ -325,17 +340,17 @@ abstract class Port : Component() {
      * This is arbitrarily the first Node, for Falstad compatibility.
      */
     open val neg: Node?
-        get() = node(0)
+        get() = node(NEG_INDEX)
 
     /**
      * Get the positive [PinRef].
      */
-    open val posRef get() = pinRef(1)
+    open val posRef get() = pinRef(POS_INDEX)
 
     /**
      * Get the negative [PinRef].
      */
-    open val negRef get() = pinRef(0)
+    open val negRef get() = pinRef(NEG_INDEX)
 
     /**
      * Get the potential across [pos] and [neg], signed positive when [pos] has a greater potential than [neg].

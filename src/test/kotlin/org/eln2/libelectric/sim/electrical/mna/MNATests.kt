@@ -5,11 +5,8 @@ import org.ageseries.libage.debug.mnaPrintln
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
-import org.ageseries.libage.sim.electrical.mna.component.CurrentSource
-import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.ageseries.libage.sim.electrical.mna.component.Capacitor
-import org.ageseries.libage.sim.electrical.mna.component.Inductor
+import org.ageseries.libage.sim.electrical.mna.component.*
+import org.ageseries.libage.sim.electrical.mna.component.Port.Companion.NEG_INDEX
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
@@ -333,5 +330,70 @@ internal class MNATests {
         val output = c.toDot()
 
         assert(output.length > 1)
+    }
+
+    @Test
+    fun lineOfEqualResistors() {
+        var res = 10.0
+        val v = 5.0
+
+        val cl = Circuit()
+        val l = Line()
+        val vsl = VoltageSource().apply { potential = 5.0 }
+        cl.add(vsl, l)
+        vsl.negRef.connect(l.negRef)
+        vsl.posRef.connect(l.posRef)
+        vsl.negRef.ground()
+
+        val parts = mutableListOf<Line.Part>()
+
+        for(number in 1 .. 10) {
+            val cr = Circuit()
+            val vsr = VoltageSource().apply { potential = 5.0 }
+            cr.add(vsr)
+            vsr.negRef.ground()
+            var lastr = vsr.posRef
+            val resistors = (0 until number).map {
+                Resistor().apply {
+                    cr.add(this)
+                    resistance = res
+                    posRef.connect(lastr)
+                    lastr = negRef
+                }
+            }
+            lastr.connect(vsr.negRef)
+
+            parts.add(l.add(l.size, res))
+
+            cl.step(1.0)
+            cr.step(1.0)
+
+            parts.zip(resistors).forEach { (part, resistor) ->
+                assert(within_tolerable_error(part.potential, resistor.potential, 1e-9))
+                assert(within_tolerable_error(part.current, resistor.current, 1e-9))
+                assert(within_tolerable_error(part.power, resistor.power, 1e-9))
+            }
+        }
+    }
+
+    @Test
+    fun lineMutation() {
+        val nomr = 10.0
+        val c = Circuit()
+        val vs = VoltageSource().apply { potential = 5.0 }
+        val l = Line()
+        c.add(vs, l)
+        val parta = l.add(l.size, nomr)
+        val partb = l.add(l.size, nomr)
+        c.step(1.0)
+        assertEquals(parta.power, partb.power)
+        assertEquals(parta.current, partb.current)
+        assertEquals(parta.potential, partb.potential)
+        val factor = 2.0
+        parta.resistance = factor * nomr
+        c.step(1.0)
+        assertEquals(parta.power * factor, partb.power)
+        assertEquals(parta.current, partb.current)
+        assertEquals(parta.potential, factor * partb.potential)
     }
 }
