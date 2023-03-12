@@ -157,17 +157,6 @@ class MassConnection(
         var toB = -energy + dTerm
         if(toA > 0.0) { toA *= params.efficiency }
         if(toB > 0.0) { toB *= params.efficiency }
-        /*
-        // Detect an inflection point--if the energies would collide, assume they equilibriate.
-        val newTempA = a.temperatureAt(a.energy + energy).kelvin
-        val newTempB = b.temperatureAt(b.energy - energy).kelvin
-        if(deltaT.sign != (newTempB - newTempA).sign) {
-            // Distribute the energies at equilibrium.
-            val totalE = a.energy + b.energy
-            val eqAEnergy = totalE * (a.mass / b.mass) * (a.material.specificHeat / b.material.specificHeat)
-            return eqAEnergy - a.energy
-        }
-        */
         return toA to toB
     }
 
