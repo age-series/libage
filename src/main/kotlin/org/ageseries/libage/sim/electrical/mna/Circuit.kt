@@ -585,6 +585,11 @@ class Circuit {
         }
     }
 
+    fun resetResults() {
+        nodes.forEach { it.get()!!.potential = 0.0 }
+        voltageSources.forEach { it.get()!!.potential = 0.0 }
+    }
+
     /**
      * Perform a simulation step.
      *
@@ -594,6 +599,9 @@ class Circuit {
      */
     fun step(dt: Double): Boolean {
         dprintln("dt=$dt")
+
+        resetResults()
+
         if (componentsChanged || connectivityChanged) {
             buildMatrix()
         }
