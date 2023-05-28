@@ -285,6 +285,20 @@ abstract class Component : IDetail {
         markConnectivityChanged()
     }
 
+    /**
+     * Unlinks this component, giving it a fresh set of [Pin]s.
+     *
+     * Other [Component]s connected to the same erstwhile pins will remain connected.
+     *
+     * At present, this is functionally equivalent to removing and replacing the component into its owning [Circuit].
+     */
+    fun unlink() {
+        if(circuit == null) return
+        val cir = circuit!!  // safe with one thread
+        cir.remove(this) // mutates this.circuit
+        cir.add(this)
+    }
+
     private fun markConnectivityChanged() {
         if(circuit == null) throw ConnectionMutationException()
         circuit!!.connectivityChanged = true

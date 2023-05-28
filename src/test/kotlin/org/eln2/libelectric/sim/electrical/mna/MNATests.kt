@@ -396,4 +396,30 @@ internal class MNATests {
         assertEquals(parta.current, partb.current)
         assertEquals(parta.potential, factor * partb.potential)
     }
+
+    @Test
+    fun zeroOnInvalid() {
+        val c = Circuit()
+        val r = Resistor().apply { resistance = 10.0 }
+        val v = VoltageSource().apply { potential = 5.0 }
+        c.add(r, v)
+        r.posRef.connect(v.posRef)
+        r.negRef.connect(v.negRef)
+        v.negRef.ground()
+        assert(c.step(0.05))
+        assert(r.power > 0.0) { "Power: ${r.power}" }
+        // Now float the circuit, failing to simulate
+        v.unlink()
+        r.unlink()
+        r.posRef.connect(v.posRef)
+        r.negRef.connect(v.negRef)
+        assert(!c.step(0.05))
+        assertEquals(r.power, 0.0)
+        assertEquals(r.potential, 0.0)
+        assertEquals(v.current, 0.0)
+        // Ground and be sure this recovers
+        v.negRef.ground()
+        assert(c.step(0.05))
+        assert(r.power > 0.0)
+    }
 }
