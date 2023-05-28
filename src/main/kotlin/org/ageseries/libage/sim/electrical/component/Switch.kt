@@ -10,6 +10,10 @@ class Switch: Resistor() {
 
     // You can use open or closed but open is the actual backing var here.
     var open = true
+        set(v) {
+            field = v
+            resistance = if(v) { openResistance } else { closedResistance }
+        }
     var closed: Boolean
         get() = !open
         set(v) {
@@ -20,20 +24,6 @@ class Switch: Resistor() {
     var closedResistance = 1.0
     // openResistance is when the switch is open
     var openResistance = 100_000_000.0
-
-    override var resistance: Double
-        get() {
-            return if (open) {
-                openResistance
-            } else {
-                closedResistance
-            }
-        }
-        set(v) {
-            if (v > 0) {
-                closedResistance = v
-            }
-        }
 
     override fun detail(): String {
         return "[switch $name: ${potential}v, ${current}A, open: ${openResistance}Ω, closed: ${closedResistance}Ω, ${power}W]"
