@@ -23,6 +23,21 @@ internal class MNATests {
         return percentError < tolerance
     }
 
+    /**
+     * A function that runs a block repeatedly, an arbitrary number of times, to check that a condition should be
+     * idempotent.
+     */
+    fun idempotent(trials: Int = 3, block: () -> Unit): Unit {
+        for(i in 0 .. trials) {
+            try {
+                block()
+            } catch (e: Throwable) {
+                println("On iteration ${i+1}:")
+                throw e
+            }
+        }
+    }
+
     @Test
     fun resistorVoltageSourceTest() {
         val c = Circuit()
@@ -38,9 +53,11 @@ internal class MNATests {
         vs.potential = 10.0
         r.resistance = 10.0
 
-        assert(c.step(0.05))
-        mnaPrintln(c)
-        assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        idempotent {
+            assert(c.step(0.05))
+            mnaPrintln(c)
+            assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        }
     }
 
     @Test
@@ -58,11 +75,13 @@ internal class MNATests {
         cs.current = -1.0
         r.resistance = 10.0
 
-        assert(c.step(0.05))
-        mnaPrintln(c)
-        assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
-        assertEquals(true, (r.potential > 9.99) and (r.current < 10.01))
-        assertEquals(true, (cs.potential > 9.99) and (cs.current < 10.01))
+        idempotent {
+            assert(c.step(0.05))
+            mnaPrintln(c)
+            assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+            assertEquals(true, (r.potential > 9.99) and (r.current < 10.01))
+            assertEquals(true, (cs.potential > 9.99) and (cs.current < 10.01))
+        }
     }
 
     @Test
@@ -82,9 +101,15 @@ internal class MNATests {
         r2.connect(0, vs, 0)
         vs.ground(1)
 
-        assert(circuit.step(0.5))
-        assert(within_tolerable_error(r1.current, r2.current, 0.001))
-        assert(within_tolerable_error(r1.current, 1.0, 0.01))
+        idempotent {
+            println("pre-solve")
+            mnaPrintln(circuit)
+            assert(circuit.step(0.5))
+            println("post-solve")
+            mnaPrintln(circuit)
+            assert(within_tolerable_error(r1.current, r2.current, 0.001))
+            assert(within_tolerable_error(r1.current, 1.0, 0.01))
+        }
     }
 
     @Test
@@ -102,13 +127,17 @@ internal class MNATests {
         vs.potential = 10.0
         r.resistance = 10.0
 
-        assert(c.step(0.05))
-        assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        idempotent {
+            assert(c.step(0.05))
+            assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        }
 
         r.resistance = 50.0
 
-        assert(c.step(0.05))
-        assertEquals(true, (r.current > 0.19) and (r.current < 0.21))
+        idempotent {
+            assert(c.step(0.05))
+            assertEquals(true, (r.current > 0.19) and (r.current < 0.21))
+        }
     }
 
     @Test
@@ -129,17 +158,21 @@ internal class MNATests {
         r1.resistance = 10.0
         r2.resistance = 20.0
 
-        assert(c.step(0.05))
-        assert((r1.current > 0.333) and (r1.current < 0.334))
-        assert((r2.current > 0.333) and (r2.current < 0.334))
-        assert(((r1.node(1)?.potential ?: 0.0) > 3.333) and ((r1.node(1)?.potential ?: 0.0) < 3.334))
+        idempotent {
+            assert(c.step(0.05))
+            assert((r1.current > 0.333) and (r1.current < 0.334))
+            assert((r2.current > 0.333) and (r2.current < 0.334))
+            assert(((r1.node(1)?.potential ?: 0.0) > 3.333) and ((r1.node(1)?.potential ?: 0.0) < 3.334))
+        }
 
         r2.resistance = 50.0
 
-        assert(c.step(0.05))
-        assert((r1.current > 0.1666) and (r1.current < 0.1667))
-        assert((r2.current > 0.1666) and (r2.current < 0.1667))
-        assert(((r1.node(1)?.potential ?: 0.0)> 1.666) and ((r1.node(1)?.potential ?: 0.0) < 1.667))
+        idempotent {
+            assert(c.step(0.05))
+            assert((r1.current > 0.1666) and (r1.current < 0.1667))
+            assert((r2.current > 0.1666) and (r2.current < 0.1667))
+            assert(((r1.node(1)?.potential ?: 0.0) > 1.666) and ((r1.node(1)?.potential ?: 0.0) < 1.667))
+        }
     }
 
     @Test
@@ -166,15 +199,20 @@ internal class MNATests {
         r2.connect(POSITIVE, r1, POSITIVE)
         r2.connect(NEGATIVE, r1, NEGATIVE)
 
-        assert(c.step(0.5))
-        assertEquals(r2.current, r1.current, 1e-9)
-        assertEquals(r1.current, current, 1e-9)
-        assertEquals(vs.current, current * 2.0, 1e-9)
+        idempotent {
+            assert(c.step(0.5))
+            assertEquals(r2.current, r1.current, 1e-9)
+            assertEquals(r1.current, current, 1e-9)
+            assertEquals(vs.current, current * 2.0, 1e-9)
+        }
 
         c.remove(r2)
-        assert(c.step(0.5))
-        assertEquals(r1.current, current, 1e-9)
-        assertEquals(r2.circuit, null)
+
+        idempotent {
+            assert(c.step(0.5))
+            assertEquals(r1.current, current, 1e-9)
+            assertEquals(r2.circuit, null)
+        }
     }
 
     @Test
@@ -305,10 +343,12 @@ internal class MNATests {
         vn.connect(rn)
         vn.ground()
 
-        assert(c.step(0.05))
-        mnaPrintln(c)
-        assert(r.current > 0.99 && r.current < 1.01)
-        assert(vs.current > 0.99 && vs.current < 1.01)
+        idempotent {
+            assert(c.step(0.05))
+            mnaPrintln(c)
+            assert(r.current > 0.99 && r.current < 1.01)
+            assert(vs.current > 0.99 && vs.current < 1.01)
+        }
     }
 
     @Test

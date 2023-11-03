@@ -600,8 +600,6 @@ class Circuit {
     fun step(dt: Double): Boolean {
         dprintln("dt=$dt")
 
-        resetResults()
-
         if (componentsChanged || connectivityChanged) {
             buildMatrix()
         }
@@ -626,6 +624,9 @@ class Circuit {
         postProcess.keys.forEach { it.process(dt) }
 
         dprintln("success=$success")
+        if(!success) {
+            resetResults()  // Don't let stale data confuse consumers who don't check the return code
+        }
         return success
     }
 
