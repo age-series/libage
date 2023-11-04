@@ -16,6 +16,8 @@ interface MultiMap<K, V> {
      * Tests whether a key [k] is in the MultiMap.
      *
      * This is true if k is associated with at least one value.
+     *
+     * Implementations are encouraged to avoid constructing new objects if possible.
      */
     operator fun contains(k: K): Boolean = get(k).isNotEmpty()
 
@@ -156,6 +158,9 @@ class MutableSetMapMultiMap<K, V>(iter: Iterator<Pair<K, V>>) : MutableMultiMap<
     /** This implementation is O(keyMappingSize). */
     override val entriesSize: Int
         get() = map.entries.map { (_, vs) -> vs.size }.sum()
+
+    // Don't construct the set just to answer this question
+    override fun contains(k: K): Boolean = map[k]?.isNotEmpty() ?: false
 
     override fun toString() = map.toString()
 }
