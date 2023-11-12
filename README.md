@@ -10,6 +10,7 @@ This repository roughly contains:
 
 * MNA-based Electrical Solver (`org.libage.sim.electrical.mna`)
 * Falstad netlist loader for MNA Solver (`org.libage.parsers.falstad`)
+* Thermal system solver (`org.libage.sim.thermal`)
 * Data structures (`org.libage.data`)
   * MultiMap, Disjoint Set, and Component Graph
 * Function tables (`org.libage.math`)
@@ -17,7 +18,6 @@ This repository roughly contains:
 
 ## Planned Features
 
-* Thermal system solver
 * Generic Circuit API
 * Advanced pluggable circuit solvers (eg, non-smooth dynamic systems solvers)
 
