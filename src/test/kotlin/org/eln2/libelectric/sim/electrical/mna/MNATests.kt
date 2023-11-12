@@ -6,10 +6,11 @@ import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.*
-import org.ageseries.libage.sim.electrical.mna.component.Port.Companion.NEG_INDEX
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 internal class MNATests {
 
@@ -27,7 +28,7 @@ internal class MNATests {
      * A function that runs a block repeatedly, an arbitrary number of times, to check that a condition should be
      * idempotent.
      */
-    fun idempotent(trials: Int = 3, block: () -> Unit): Unit {
+    fun idempotent(trials: Int = 3, block: () -> Unit) {
         for(i in 0 .. trials) {
             try {
                 block()
@@ -374,12 +375,12 @@ internal class MNATests {
 
     @Test
     fun lineOfEqualResistors() {
-        var res = 10.0
+        val res = 10.0
         val v = 5.0
 
         val cl = Circuit()
         val l = Line()
-        val vsl = VoltageSource().apply { potential = 5.0 }
+        val vsl = VoltageSource().apply { potential = v }
         cl.add(vsl, l)
         vsl.negRef.connect(l.negRef)
         vsl.posRef.connect(l.posRef)
@@ -389,7 +390,7 @@ internal class MNATests {
 
         for(number in 1 .. 10) {
             val cr = Circuit()
-            val vsr = VoltageSource().apply { potential = 5.0 }
+            val vsr = VoltageSource().apply { potential = v }
             cr.add(vsr)
             vsr.negRef.ground()
             var lastr = vsr.posRef
@@ -461,5 +462,95 @@ internal class MNATests {
         v.negRef.ground()
         assert(c.step(0.05))
         assert(r.power > 0.0)
+    }
+
+    @Test
+    fun powerPotentialSourceConvergence() {
+        val c = Circuit()
+        val r = Resistor().apply { resistance = 10.0 }
+        val s = PowerVoltageSource().apply {
+            potentialMax = 50.0
+            powerIdeal = 10.0
+        }
+        c.add(r, s)
+        r.posRef.connect(s.posRef)
+        r.negRef.connect(s.negRef)
+        s.negRef.ground()
+        // P = E^2 / R -> E = +/-sqrt(PR)
+        val correctPotential = { power: Double -> sqrt(abs(power) * r.resistance) }
+        val tolerance = 0.000000001  // one perbillion error
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.potential, correctPotential(s.power), tolerance))  // should be 10V
+        }
+        r.resistance = 40.0
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.potential, correctPotential(s.power), tolerance))  // should be 20V
+        }
+        r.resistance = 490.0
+        idempotent {
+            assert(c.step(0.05))
+            // should be 70V but we can't reach that because of the 50V max
+            assert(within_tolerable_error(s.potential, s.potentialMax!!, tolerance))
+            assert(within_tolerable_error(abs(s.power), (s.potential * s.potential) / r.resistance, tolerance))
+        }
+        s.potentialMax = null  // abolish that limit so the rules are as usual
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.potential, correctPotential(s.power), tolerance))  // should be 70V
+        }
+    }
+
+    @Test
+    fun powerCurrentSourceConvergence() {
+        val c = Circuit()
+        val r = Resistor().apply { resistance = 10.0 }
+        val s = PowerCurrentSource().apply {
+            currentMax = 5.0
+            powerIdeal = 10.0
+        }
+        c.add(r, s)
+        r.posRef.connect(s.posRef)
+        r.negRef.connect(s.negRef)
+        s.negRef.ground()
+        // P = RI^2 -> E = +/-sqrt(P / R)
+        val correctCurrent = { power: Double -> sqrt(abs(power) / r.resistance) }
+        val tolerance = 0.000000001  // one perbillion error
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.current, correctCurrent(s.power), tolerance))  // should be 1A
+        }
+        r.resistance = 2.5
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.current, correctCurrent(s.power), tolerance))  // should be 2A
+        }
+        r.resistance = 0.15625
+        idempotent {
+            assert(c.step(0.05))
+            // should be 8A but we can't reach that because of the 5A max
+            assert(within_tolerable_error(s.current, s.currentMax!!, tolerance))
+            assert(within_tolerable_error(abs(s.power), (s.current * s.current) * r.resistance, tolerance))
+        }
+        s.currentMax = null  // abolish that limit so the rules are as usual
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.current, correctCurrent(s.power), tolerance))  // should be 8A
+        }
+    }
+
+    companion object {
+        @JvmStatic
+        @BeforeAll
+        fun setDebug() {
+            System.setProperty("mods.eln.debug", "1")
+        }
     }
 }
