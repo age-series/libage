@@ -1,18 +1,14 @@
 package org.ageseries.libage.sim.electrical.mna
 
-import org.apache.commons.math3.linear.*
 import org.ageseries.libage.data.MutableMultiMap
 import org.ageseries.libage.data.mutableMultiMapOf
 import org.ageseries.libage.debug.DEBUG
 import org.ageseries.libage.debug.dprint
 import org.ageseries.libage.debug.dprintln
-import org.ageseries.libage.sim.IProcess
-import org.ageseries.libage.sim.electrical.mna.component.Component
-import org.ageseries.libage.sim.electrical.mna.component.Pin
 import org.ageseries.libage.sim.electrical.mna.component.*
+import org.apache.commons.math3.linear.*
 import java.lang.ref.WeakReference
-import java.util.WeakHashMap
-import kotlin.collections.ArrayList
+import java.util.*
 import kotlin.math.abs
 
 /**
@@ -161,18 +157,6 @@ class Circuit {
      */
     // These don't merge, but keep this collection weak anyway so the size reflects component removal.
     private val compVsMap = WeakHashMap<VSource, Component>()
-
-    /**
-     * A list of closures to call before the Circuit step runs.
-     */
-    @Suppress("MemberVisibilityCanBePrivate")
-    val preProcess = WeakHashMap<IProcess, Unit>()
-
-    /**
-     * A list of closures to call after the Circuit step finishes.
-     */
-    @Suppress("MemberVisibilityCanBePrivate")
-    val postProcess = WeakHashMap<IProcess, Unit>()
 
     // These fields are only for the solver--don't use them casually elsewhere
     /**
@@ -604,7 +588,6 @@ class Circuit {
             buildMatrix()
         }
 
-        preProcess.keys.forEach { it.process(dt) }
         components.forEach { it.preStep(dt) }
 
         for (substep in 0 until maxSubSteps) {
@@ -621,7 +604,6 @@ class Circuit {
         }
 
         components.forEach { it.postStep(dt) }
-        postProcess.keys.forEach { it.process(dt) }
 
         dprintln("success=$success")
         if(!success) {
