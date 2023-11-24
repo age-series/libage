@@ -1,7 +1,6 @@
 package org.ageseries.libage.data
 
 import org.ageseries.libage.sim.Scale
-import org.ageseries.libage.sim.thermal.ThermalUnits
 
 data class QuantityScale<Unit>(val scale: Scale) {
     constructor(factor: Double, base: Double) : this(
@@ -32,30 +31,6 @@ data class QuantityScale<Unit>(val scale: Scale) {
      * */
     operator fun unaryMinus() = this / 1000.0
 }
-
-interface Mass
-interface MolecularWeight
-interface Time
-interface Distance
-interface Velocity
-interface Energy
-interface Radioactivity
-interface RadiationAbsorbedDose
-interface RadiationDoseEquivalent
-interface RadiationExposure
-interface ArealDensity
-interface ReciprocalDistance
-interface ReciprocalArealDensity
-interface Density
-interface Substance
-interface Area
-interface Volume
-interface Temp // Rename once we remove Temperature
-interface MolarConcentration
-interface SpecificHeatCapacity
-interface HeatCapacity
-interface ThermalConductivity
-interface Pressure
 
 /**
  * Represents a physical quantity, characterised by a [Unit] and a real number [value].
@@ -103,11 +78,17 @@ fun <U> abs(q: Quantity<U>) = Quantity<U>(kotlin.math.abs(!q))
 /**
  * Defines the standard scale of the [Unit] (a scale with factor 1).
  * */
-fun <Unit> standardScale(factor: Double = 1.0, base: Double = 0.0) = QuantityScale<Unit>(factor, base)
+fun <Unit> standardScale(factor: Double = 1.0) = QuantityScale<Unit>(factor, 0.0)
 
+interface Mass
 val KILOGRAMS = standardScale<Mass>()
 val GRAMS = -KILOGRAMS
+val MILLIGRAMS = -KILOGRAMS
+val kg by ::KILOGRAMS
+val g by ::GRAMS
+val mg by ::MILLIGRAMS
 
+interface Time
 val SECOND = standardScale<Time>()
 val MILLISECONDS = -SECOND
 val MICROSECONDS = -MILLISECONDS
@@ -115,11 +96,18 @@ val NANOSECONDS = -MICROSECONDS
 val MINUTES = SECOND * 60.0
 val HOURS = MINUTES * 60.0
 val DAYS = HOURS * 24.0
+val s by ::SECOND
+val ms by ::MILLISECONDS
 
+interface Distance
 val METER = standardScale<Distance>()
 val CENTIMETERS = METER / 100.0
 val MILLIMETERS = -METER
+val m by ::METER
+val cm by ::CENTIMETERS
+val mm by ::MILLIMETERS
 
+interface Energy
 val JOULE = standardScale<Energy>()
 val KILOJOULES = +JOULE
 val MEGAJOULES = +KILOJOULES
@@ -128,6 +116,44 @@ val WATT_SECONDS = QuantityScale<Energy>(JOULE.factor, 0.0)
 val WATT_MINUTES = WATT_SECONDS * 60.0
 val WATT_HOURS = WATT_MINUTES * 60.0
 val KW_HOURS = WATT_HOURS * 1000.0
+val J by ::JOULE
+val kJ by ::KILOJOULES
+val MJ by ::MEGAJOULES
+val GJ by ::GIGAJOULES
+val Ws by ::WATT_SECONDS
+val Wmin by ::WATT_MINUTES
+val Wh by ::WATT_HOURS
+
+interface Power
+val WATT = standardScale<Power>()
+val MILLIWATT = -WATT
+val KILOWATT = +WATT
+val MEGAWATT = +KILOWATT
+val GIGAWATT = +MEGAWATT
+val W by ::WATT
+val kW by ::KILOWATT
+val MW by ::MEGAWATT
+val GW by ::GIGAWATT
+
+interface Potential
+val VOLT = standardScale<Potential>()
+val KILOVOLT = +VOLT
+val MILLIVOLT = -VOLT
+val V by ::VOLT
+val KV by ::KILOVOLT
+
+interface Current
+val AMPERE = standardScale<Current>()
+val MILLIAMPERE = -AMPERE
+val A by ::AMPERE
+val mA by ::MILLIAMPERE
+
+interface Resistance
+val OHM = standardScale<Resistance>()
+val KILOOHM = +OHM
+val MEGAOHM = +KILOOHM
+val GIGAOHM = +MEGAOHM
+val MILLIOHM = -OHM
 
 // Serious precision issues? Hope not! :Fish_Smug:
 val ELECTRON_VOLT = JOULE * 1.602176634e-19
@@ -135,7 +161,13 @@ val KILO_ELECTRON_VOLT = JOULE * 1.602176634e-16
 val MEGA_ELECTRON_VOLT = JOULE * 1.602176634e-13
 val GIGA_ELECTRON_VOLT = JOULE * 1.602176634e-10
 val TERA_ELECTRON_VOLT = JOULE * 1.602176634e-7
+val eV by ::ELECTRON_VOLT
+val keV by ::KILO_ELECTRON_VOLT
+val MeV by ::MEGA_ELECTRON_VOLT
+val GeV by ::GIGA_ELECTRON_VOLT
+val TeV by ::TERA_ELECTRON_VOLT
 
+interface Radioactivity
 val BECQUEREL = standardScale<Radioactivity>()
 val KILOBECQUERELS = +BECQUEREL
 val MEGABECQUERELS = +KILOBECQUERELS
@@ -149,9 +181,11 @@ val KILOCURIES = +CURIE
 val MEGACURIES = +KILOCURIES
 val GIGACURIES = +MEGACURIES // Average conversation with Grissess (every disintegration is a cute dragon image)
 
+interface RadiationAbsorbedDose
 val GRAY = standardScale<RadiationAbsorbedDose>()
 val RAD = GRAY / 100.0
 
+interface RadiationDoseEquivalent
 val SIEVERT = standardScale<RadiationDoseEquivalent>()
 val MILLISIEVERTS = -SIEVERT
 val MICROSIEVERTS = -MILLISIEVERTS
@@ -159,49 +193,73 @@ val REM = SIEVERT / 100.0
 val MILLIREM = -REM
 val MICROREM = -MILLIREM
 
+interface RadiationExposure
 val COULOMB_PER_KG = standardScale<RadiationExposure>()
 val ROENTGEN = COULOMB_PER_KG / 3875.96899225
 
+interface ReciprocalDistance
 val RECIP_METER = standardScale<ReciprocalDistance>()
 val RECIP_CENTIMETERS = RECIP_METER * 100.0
 
+interface ArealDensity
 val KG_PER_M2 = standardScale<ArealDensity>()
 val G_PER_CM2 = KG_PER_M2 * 10.0
 
+interface Density
 val KG_PER_M3 = standardScale<Density>()
 val G_PER_CM3 = KG_PER_M3 * 1000.0
 val G_PER_L = KG_PER_M3
 
+interface ReciprocalArealDensity
 val M2_PER_KG = standardScale<ReciprocalArealDensity>()
 val CM2_PER_G = M2_PER_KG / 10.0
 
+interface Velocity
 val M_PER_S = standardScale<Velocity>()
 val KM_PER_S = +M_PER_S
 
+interface Substance
 val MOLE = standardScale<Substance>()
 
+interface MolarConcentration
 val MOLE_PER_M3 = standardScale<MolarConcentration>()
 
+interface Area
 val M2 = standardScale<Area>()
 
+interface Volume
 val M3 = standardScale<Volume>()
 val LITERS = M3 / 1000.0
 val MILLILITERS = -LITERS
+val L by ::LITERS
+val mL by ::MILLILITERS
 
-val KELVIN = standardScale<Temp>()
-val CELSIUS = QuantityScale<Temp>(ThermalUnits.CELSIUS)
+interface Temperature
+val KELVIN = standardScale<Temperature>()
+val CELSIUS = QuantityScale<Temperature>(Scale(1.0, -273.15, "°C"))
 
+interface SpecificHeatCapacity
 val J_PER_KG_K = standardScale<SpecificHeatCapacity>()
 val J_PER_G_K = +J_PER_KG_K
 val KJ_PER_KG_K = +J_PER_KG_K
 
+interface HeatCapacity
 val J_PER_K = standardScale<HeatCapacity>()
 
+interface ThermalConductivity
 val W_PER_M_K = standardScale<ThermalConductivity>()
 val mW_PER_M_K = -W_PER_M_K
 
+interface MolecularWeight
 val KG_PER_MOLE = standardScale<MolecularWeight>()
 val G_PER_MOLE = -KG_PER_MOLE
 
+interface Pressure
 val PASCAL = standardScale<Pressure>()
 val ATMOSPHERES = PASCAL * 9.86923e-6
+val Pa by ::PASCAL
+val Atm by ::ATMOSPHERES
+
+interface Intensity
+val WATT_PER_M2 = standardScale<Intensity>()
+val KILOWATT_PER_M2 = +WATT_PER_M2

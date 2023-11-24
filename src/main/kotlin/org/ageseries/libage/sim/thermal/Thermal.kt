@@ -1,9 +1,11 @@
 package org.ageseries.libage.sim.thermal
 
+import org.ageseries.libage.data.KELVIN
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.mutableMultiMapOf
 import org.ageseries.libage.sim.CIE
 import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.Scale
 import java.util.*
 import kotlin.math.PI
 import kotlin.math.pow
@@ -20,61 +22,31 @@ const val STEFAN_BOLTZMANN_CONSTANT: Double = 5.670373e-8
 const val FULL_STERADIANS: Double = PI * 4
 
 /**
- * A temperature.
+ * Emission power of a surface with the given area at this temperature, in W.
  *
- * The inner unit is always Kelvin; conversions are available as properties and methods.
+ * This isn't going to be equivalent to the "brightness", since one needs to take the spectral density and map it
+ * through a "luminosity function". However, if one is feeling lazy, you can just equate this to lumens, and divide
+ * through by [FULL_STERADIANS] to get candela.
  */
-@JvmInline
-value class Temperature(val kelvin: Double) {
-    /**
-     * Return this temperature on the given [Scale].
-     */
-    fun to(scale: Scale): Double = scale.map(kelvin)
+fun Quantity<Temperature>.emissionPower(surfaceArea: Double): Double = value.pow(4) * surfaceArea * STEFAN_BOLTZMANN_CONSTANT
 
-    operator fun plus(rhs: Temperature) = Temperature(kelvin + rhs.kelvin)
-    operator fun minus(rhs: Temperature) = Temperature(kelvin - rhs.kelvin)
-    operator fun times(rhs: Double) = Temperature(kelvin * rhs)
-    operator fun div(rhs: Double) = Temperature(kelvin / rhs)
-
-    operator fun compareTo(rhs: Temperature) = kelvin.compareTo(rhs.kelvin)
-
-    override fun toString() = ThermalUnits.KELVIN.display(kelvin)
-
-    /**
-     * Emission power of a surface with the given area at this temperature, in W.
-     *
-     * This isn't going to be equivalent to the "brightness", since one needs to take the spectral density and map it
-     * through a "luminosity function". However, if one is feeling lazy, you can just equate this to lumens, and divide
-     * through by [FULL_STERADIANS] to get candela.
-     */
-    fun emissionPower(surfaceArea: Double): Double =
-        kelvin.pow(4) * surfaceArea * STEFAN_BOLTZMANN_CONSTANT
-
-    /**
-     * Emission color of a black body with this temperature.
-     *
-     * No correction for power is performed, so the result is always at maximum brightness. Any real use should consider
-     * scaling brightness appropriately by [emissionPower].
-     */
-    val emissionColor: CIE.XYZ31
-        get() = kelvin.coerceIn(1000.0, 15000.0).toFloat().let { t ->
-            val t2 = t * t
-            CIE.UVW60.fromuvY(
-                (0.860117757f + 1.54118254e-4f * t + 1.28641212e-7f * t2) /
-                        (1f + 8.42420235e-4f * t + 7.08145163e-7f * t2),
-                (0.317398726f + 4.22806245e-5f * t + 4.20481691e-8f * t2) /
-                        (1f - 2.89741816e-5f * t + 1.61456063e-7f * t2),
-                1f,
-            ).asXYZ31
-        }
-
-        companion object {
-            /**
-             * Return a Temperature given a measurement on a different [Scale].
-             */
-            fun from(temp: Double, scale: Scale) = Temperature(scale.unmap(temp))
-        }
-}
+/**
+ * Emission color of a black body with this temperature.
+ *
+ * No correction for power is performed, so the result is always at maximum brightness. Any real use should consider
+ * scaling brightness appropriately by [emissionPower].
+ */
+val Quantity<Temperature>.emissionColor: CIE.XYZ31
+    get() = value.coerceIn(1000.0, 15000.0).toFloat().let { t ->
+        val t2 = t * t
+        CIE.UVW60.fromuvY(
+            (0.860117757f + 1.54118254e-4f * t + 1.28641212e-7f * t2) /
+                    (1f + 8.42420235e-4f * t + 7.08145163e-7f * t2),
+            (0.317398726f + 4.22806245e-5f * t + 4.20481691e-8f * t2) /
+                    (1f - 2.89741816e-5f * t + 1.61456063e-7f * t2),
+            1f,
+        ).asXYZ31
+    }
 
 /**
  * "Standard" temperature, in Kelvin.
@@ -92,29 +64,35 @@ value class Temperature(val kelvin: Double) {
  * centigrade, and so forth. Current best practice is to document which "stnadard" is actually adhered to, so consider
  * this comment to declare our adherence to IUPAC 1982 :)
  */
-val STANDARD_TEMPERATURE: Temperature = Temperature(273.15)
+val STANDARD_TEMPERATURE = Quantity(273.15, KELVIN)
 
 class ThermalMass(
-    /** The material of this mass, used for its thermal properties. */
+    /**
+     * The material of this mass, used for its thermal properties.
+     * */
     val material: Material,
-    /** Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE]. */
+    /**
+     * Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE].
+     * */
     energy: Double? = null,
-    /** Mass, in kg. */
+    /**
+     * Mass, in kg.
+     * */
     val mass: Double = 1.0,
 ) {
-    var energy: Double = energy ?: (STANDARD_TEMPERATURE.kelvin * mass * material.specificHeat)
+    var energy: Double = energy ?: (!STANDARD_TEMPERATURE * mass * material.specificHeat)
 
-    fun temperatureAt(e: Double): Temperature = Temperature(e / mass / material.specificHeat)
+    fun temperatureAt(e: Double) = Quantity(e / mass / material.specificHeat, KELVIN)
 
     /**
      * Temperature of this mass, in K.
      *
      * Setting this changes the [energy].
      */
-    var temperature: Temperature
+    var temperature: Quantity<Temperature>
         get() = temperatureAt(energy)
         set(value) {
-            energy = value.kelvin * mass * material.specificHeat
+            energy = !value * mass * material.specificHeat
         }
 
     override fun toString() = "<Thermal Mass $material ${mass}kg ${energy}J $temperature>"
@@ -181,7 +159,7 @@ class MassConnection(
      */
     override fun transfer(dt: Double): Pair<Double, Double> {
         // Kelvin
-        val deltaT = b.temperature.kelvin - a.temperature.kelvin
+        val deltaT = !b.temperature - !a.temperature
         // W/K
         val distCondA = a.material.thermalConductivity * params.contactPoint * params.distance
         val distCondB = b.material.thermalConductivity * (1.0 - params.contactPoint) * params.distance
@@ -208,7 +186,7 @@ class EnvironmentConnection(
     /** The [ThermalMass] to affect. */
     val a: ThermalMass,
     /** The [Temperature] of the environment--assumed to have infinite energy. */
-    var temperature: Temperature,
+    var temperature: Quantity<Temperature>,
     /** The parameters of this contact. Not all fields are meaningful in this application. */
     val params: ConnectionParameters,
 ): Connection {
@@ -218,7 +196,7 @@ class EnvironmentConnection(
 
     override fun transfer(dt: Double): Pair<Double, Double> {
         // See above for comments explaining more of this
-        val deltaT = temperature.kelvin - a.temperature.kelvin
+        val deltaT = !temperature - !a.temperature
         val overallCond = sqrt(params.area * a.material.thermalConductivity * params.conductance)
         val power = deltaT * overallCond
         val critDamp = sqrt(a.mass / overallCond) * dt
@@ -280,7 +258,7 @@ class Simulator {
      */
     fun connect(
         a: ThermalMass,
-        temperature: Temperature,
+        temperature: Quantity<Temperature>,
         params: ConnectionParameters = ConnectionParameters.DEFAULT,
     ): Connection =
         EnvironmentConnection(a, temperature, params).also {
@@ -331,16 +309,20 @@ class Simulator {
         connections.forEach { connection ->
             val (toA, toB) = connection.transfer(dt)
             val masses = connection.masses
+
             masses.getOrNull(0)?.let { a ->
                 deltaE[a] = deltaE.getOrDefault(a, 0.0) + toA
             }
+
             masses.getOrNull(1)?.let { b ->
                 deltaE[b] = deltaE.getOrDefault(b, 0.0) + toB
             }
         }
+
         deltaE.entries.forEach { (mass, delta) ->
             mass.energy += delta
         }
+
         deltaE.clear()
     }
 }
