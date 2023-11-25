@@ -128,6 +128,8 @@ class PinRef(
     }
 }
 
+interface Term
+
 /**
  * The Component is an entity which can be simulated in a [Circuit]; generally speaking, these are little more than object-oriented interfaces to the state of the Circuit as expressed through its [Circuit.matrix], [Circuit.knowns], [Circuit.solver], and so forth. Much of the actual math implemented for a component depends on the "stamp" family of methods--see those for details.
  *
@@ -142,7 +144,7 @@ class PinRef(
  *
  * In keeping with good practice, please try to keep this list of _requirements_ as small as possible. There are many more fields which have default implementations (including a great many methods which do nothing) but which are needed for specific functionality; if a default implementation makes sense, define one at this level.
  */
-abstract class Component : IDetail {
+abstract class Component : IDetail, Term {
     /**
      *  Ask this component to contribute (initial) values to the MNA matrices.
      *
