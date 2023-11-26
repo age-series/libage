@@ -3,12 +3,18 @@ package org.ageseries.libage.sim.electrical.mna.component
 import org.ageseries.libage.debug.dprintln
 import org.ageseries.libage.sim.electrical.mna.Circuit
 
+interface IResistor : IPower {
+    var resistance: Double
+    val current: Double
+    val potential: Double
+}
+
 /**
  * Implements a simple, static resistor.
  *
  * The most important field is arguably [resistance]; updating this value will result in [Circuit.matrixChanged].
  */
-open class Resistor : Port(), IPower {
+open class Resistor : Port(), IResistor {
     override var name: String = "r"
     override val imageName = "resistor"
 
@@ -17,7 +23,7 @@ open class Resistor : Port(), IPower {
      *
      * Setting this will cause [Circuit.factorMatrix] to be called on the next step or substep.
      */
-    open var resistance: Double = 1.0
+    override var resistance: Double = 1.0
         set(value) {
             if(isInCircuit) {
                 // Remove our contribution to the matrix (using a negative resistance... should work)
@@ -33,7 +39,7 @@ open class Resistor : Port(), IPower {
     /**
      * Returns the current through this resistor as a function of its potential and resistance, in Amperes.
      */
-    open val current: Double
+    override val current: Double
         get() = potential / resistance
 
     /**
