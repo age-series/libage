@@ -3,6 +3,7 @@
 package org.ageseries.libage.mathematics
 
 import org.ageseries.libage.data.ClosedInterval
+import org.ageseries.libage.data.SegmentTree
 import org.ageseries.libage.data.SegmentTreeBuilder
 import org.ageseries.libage.mathematics.*
 import kotlin.math.*
@@ -129,34 +130,6 @@ inline fun trilinear(m000: Double, m100: Double, m010: Double, m110: Double, m00
     )
 }
 
-
-inline fun bilinearF(m00: Float, m10: Float, m01: Float, m11: Float, x: Float, y: Float) : Float {
-    return lerp(
-        lerp(m00, m10, x),
-        lerp(m01, m11, x),
-        y
-    )
-}
-
-inline fun trilinearF(
-    m000: Float,
-    m100: Float,
-    m010: Float,
-    m110: Float,
-    m001: Float,
-    m101: Float,
-    m011: Float,
-    m111: Float,
-    x: Float,
-    y: Float,
-    z: Float
-): Float {
-    val a = m000 + y * (m001 - m000)
-    val a1 = m100 + y * (m101 - m100)
-    val a2 = a + z * ((m010 + y * (m011 - m010)) - a)
-    return a2 + x * (a1 + z * (m110 + y * (m111 - m110) - a1) - a2)
-}
-
 interface SplineSegmentParametric {
     val t0: Double
     val t1: Double
@@ -221,8 +194,8 @@ abstract class SplineSegmentMap<S : SplineSegmentParametric>(val segments: List<
 interface SplineSegment1d : SplineSegmentParametric {
     val y0: Dual
     val y1: Dual
-    fun evaluate(tActual: Double): Double
-    fun evaluateDual(tActual: Dual): Dual
+    fun evaluate(tSegment: Double): Double
+    fun evaluateDual(tSegment: Dual): Dual
 }
 
 interface SplineSegment3d : SplineSegmentParametric {
@@ -287,6 +260,36 @@ fun hermiteQuintic(p0: Double, v0: Double, a0: Double, a1: Double, v1: Double, p
     val h3 = 1.0 / 2.0 * t3 - t4 + 1.0 / 2.0 * t5
     val h4 = -4.0 * t3 + 7.0 * t4 - 3.0 * t5
     val h5 = 10.0 * t3 - 15.0 * t4 + 6.0 * t5
+
+    return h0 * p0 + h1 * v0 + h2 * a0 + h3 * a1 + h4 * v1 + h5 * p1
+}
+
+// If we ever need more performance in the future, we can supply the first few derivatives by our own
+// functions and the rest by applying dual to the highest derivative in our own functions.
+
+fun hermiteQuinticDerivative1(p0: Double, v0: Double, a0: Double, a1: Double, v1: Double, p1: Double, t: Double): Double {
+    val t2 = t * t
+    val a = t - 1.0
+    val b = a * a
+    val h0 = -30.0 * b * t2
+    val h1 = -b * (15.0 * t2 - 2.0 * t - 1.0)
+    val h2 = -1.0 / 2.0 * b * t * (5.0 * t - 2.0)
+    val h3 = 1.0 / 2.0 * t2 * (5.0 * t2 - 8.0 * t + 3.0)
+    val h4 = t2 * (-15.0 * t2 + 28.0 * t - 12.0)
+    val h5 = 30.0 * b * t2
+
+    return h0 * p0 + h1 * v0 + h2 * a0 + h3 * a1 + h4 * v1 + h5 * p1
+}
+
+fun hermiteQuinticDerivative2(p0: Double, v0: Double, a0: Double, a1: Double, v1: Double, p1: Double, t: Double): Double {
+    val t2 = t * t
+    val t3 = t2 * t
+    val h0 = -60.0 * t * (2.0 * t2 - 3.0 * t + 1.0)
+    val h1 = -12.0 * t * (5.0 * t2 - 8.0 * t + 3.0)
+    val h2 = -10.0 * t3 + 18.0 * t2 - 9.0 * t + 1.0
+    val h3 = t * (10.0 * t2 - 12.0 * t + 3.0)
+    val h4 = -12.0 * t * (5.0 * t2 - 7.0 * t + 2.0)
+    val h5 = 60.0 * t * (2.0 * t2 - 3.0 * t + 1.0)
 
     return h0 * p0 + h1 * v0 + h2 * a0 + h3 * a1 + h4 * v1 + h5 * p1
 }
@@ -362,7 +365,7 @@ data class ArcReparamCatenary2d(
     }
 
     companion object {
-        fun parametricScan(s: Double, v: Double, h: Double, maxI: Int = 1024, eps: Double = 1e-12): Double {
+        fun parametricScan(s: Double, v: Double, h: Double, maxI: Int = 1024, minI: Int = 32, eps: Double = 1e-12): Double {
             val dagn = sqrt(s * s - v * v)
 
             var param = 0.5
@@ -378,7 +381,7 @@ data class ArcReparamCatenary2d(
 
                 param -= (error.value / error[1])
 
-                if (error.value < eps) {
+                if (i >= minI && error.value < eps) {
                     break
                 }
             }
@@ -451,7 +454,6 @@ data class ArcReparamCatenarySegment3d(
     val vertical: Vector3d
 ) : SplineSegment3d {
     val catenary = ArcReparamCatenary3d(p0, p1, length, vertical, 0.0, 1.0)
-
     override val y0 = Vector3dDual.const(p0, 1)
     override val y1 = Vector3dDual.const(p1, 1)
     override fun evaluate(tSegment: Double) = catenary.evaluateDual(Dual.variable(tSegment, 1)).value
@@ -481,8 +483,8 @@ data class CubicHermiteSplineSegment1d(
 ) : SplineSegment1d {
     override val y0 = Dual.of(p0, v0)
     override val y1 = Dual.of(p1, v1)
-    override fun evaluate(tActual: Double) = hermiteCubic(p0, v0, v1, p1, tActual)
-    override fun evaluateDual(tActual: Dual) = hermiteCubicDual(p0, v0, v1, p1, tActual)
+    override fun evaluate(tSegment: Double) = hermiteCubic(p0, v0, v1, p1, tSegment)
+    override fun evaluateDual(tSegment: Dual) = hermiteCubicDual(p0, v0, v1, p1, tSegment)
 }
 
 data class LinearSplineSegment1d(
@@ -493,8 +495,8 @@ data class LinearSplineSegment1d(
 ) : SplineSegment1d {
     override val y0 = Dual.of(p0)
     override val y1 = Dual.of(p1)
-    override fun evaluate(tActual: Double) = lerp(p0, p1, tActual)
-    override fun evaluateDual(tActual: Dual) = lerp(p0, p1, tActual)
+    override fun evaluate(tSegment: Double) = lerp(p0, p1, tSegment)
+    override fun evaluateDual(tSegment: Dual) = lerp(Dual.const(p0, tSegment.size), Dual.const(p1, tSegment.size), tSegment)
 }
 
 data class QuinticHermiteSplineSegment1d(
@@ -509,8 +511,8 @@ data class QuinticHermiteSplineSegment1d(
 ) : SplineSegment1d {
     override val y0 = Dual.of(p0, v0, a0)
     override val y1 = Dual.of(p1, v1, a1)
-    override fun evaluate(tActual: Double) = hermiteQuintic(p0, v0, a0, a1, v1, p1, tActual)
-    override fun evaluateDual(tActual: Dual) = hermiteQuinticDual(p0, v0, a0, a1, v1, p1, tActual)
+    override fun evaluate(tSegment: Double) = hermiteQuintic(p0, v0, a0, a1, v1, p1, tSegment)
+    override fun evaluateDual(tSegment: Dual) = hermiteQuinticDual(p0, v0, a0, a1, v1, p1, tSegment)
 }
 
 data class QuinticHermiteSplineSegment3d(
@@ -624,7 +626,6 @@ data class Spline3d(val segments: SplineSegmentMap<SplineSegment3d>) :
             Rotation3d.fromRotationMatrix(Matrix3x3(T, N, B))
         )
     }
-
 }
 
 class InterpolatorBuilder {
