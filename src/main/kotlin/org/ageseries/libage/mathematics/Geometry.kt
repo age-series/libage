@@ -800,6 +800,26 @@ data class Vector3d(val x: Double, val y: Double, val z: Double) {
         return result.normalized()
     }
 
+    // pixar
+    fun onb() : Pair<Vector3d, Vector3d> {
+        val sign = z.sign
+        val a = -1.0 / (sign + z)
+        val b = x * y * a
+
+        return Pair(
+            Vector3d(
+                1.0 + sign * x * x * a,
+                sign * b,
+                -sign * x
+            ),
+            Vector3d(
+                b,
+                sign + y * y * a,
+                -y
+            )
+        )
+    }
+
     companion object {
         val zero = Vector3d(0.0, 0.0, 0.0)
         val one = Vector3d(1.0, 1.0, 1.0)
