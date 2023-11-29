@@ -235,8 +235,12 @@ fun integralScan(a: Double, b: Double, tolerance: Double = INTEGRAL_SCAN_EPS, f:
     return adaptlobStp(f, a, b, y1, y13, `is`)
 }
 
-fun tanh(x: Double) = sinh(x) / cosh(x)
+fun sec(x: Double) = 1.0 / cos(x)
+fun csc(x: Double) = 1.0 / sin(x)
+fun cot(x: Double) = 1.0 / tan(x)
 fun coth(x: Double) = cosh(x) / sinh(x)
+fun sech(x: Double) = 1.0 / cosh(x)
+fun csch(x: Double) = 1.0 / sinh(x)
 
 // grissess, have fun unit testing :fishmagnifique:
 
@@ -246,15 +250,36 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
     fun bind() = values.clone()
 
     /**
-     * Constructs a [Dual] from the value [x] and the [tail].
+     * Constructs a [Dual] from the value [value] and the [tail].
      * */
-    constructor(x: Double, tail: Dual) : this(
+    constructor(value: Double, tail: Dual) : this(
         DoubleArray(tail.values.size + 1).also {
-            it[0] = x
+            it[0] = value
 
-            for (i in 0 until tail.values.size) {
+            val size = tail.values.size
+            var i = 0
+
+            while (i < size) {
                 it[i + 1] = tail.values[i]
+                i++
             }
+        }
+    )
+
+    /**
+     * Constructs a [Dual] from the values [head] and the [tail].
+     * */
+    constructor(head: Dual, tail: Double) : this(
+        DoubleArray(head.values.size + 1).also {
+            val size = head.values.size
+            var i = 0
+
+            while (i < size) {
+                it[i] = head.values[i]
+                i++
+            }
+
+            it[i] = tail
         }
     )
 
@@ -271,11 +296,13 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
 
     /**
      * Gets the values at the start of the [Dual], ignoring the last [n] values.
+     * Equivalent to [dropLast].
      * */
     fun head(n: Int = 1) = Dual(DoubleArray(size - n) { values[it] })
 
     /**
      * Gets the values at the end of the [Dual], ignoring the first [n] values.
+     * Equivalent to [drop].
      * */
     fun tail(n: Int = 1) = Dual(DoubleArray(size - n) { values[it + n] })
 
@@ -365,30 +392,7 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
 
         other as Dual
 
-        if (!values.contentEquals(other.values)) {
-            return false
-        }
-
-        return true
-    }
-
-    fun approxEq(other: Dual, eps: Double = DUAL_COMPARE_EPS) : Boolean {
-        val size = this.size
-
-        if(size != other.size) {
-            return false
-        }
-
-        var i = 0
-        while (i < size) {
-            if(!this[i].approxEq(other[i], eps)) {
-                return false
-            }
-
-            i++
-        }
-
-        return true
+        return values.contentEquals(other.values)
     }
 
     override fun hashCode() = values.contentHashCode()
@@ -398,9 +402,7 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
             return "empty"
         }
 
-        return values
-            .mapIndexed { i, v -> "x$i=$v" }
-            .joinToString(", ")
+        return values.mapIndexed { i, v -> "x$i=$v" }.joinToString(", ")
     }
 
     companion object {
@@ -437,10 +439,14 @@ fun sin(x: Dual): Dual = x.function({ sin(it) }) { cos(it) }
 fun cos(x: Dual): Dual = x.function({ cos(it) }) { -sin(it) }
 fun tan(x: Dual) = sin(x) / cos(x)
 fun cot(x: Dual) = cos(x) / sin(x)
+fun sec(x: Dual) = 1.0 / cos(x)
+fun csc(x: Dual) = 1.0 / sin(x)
 fun sinh(x: Dual): Dual = x.function({ sinh(it) }) { cosh(it) }
 fun cosh(x: Dual): Dual = x.function({ cosh(it) }) { sinh(it) }
 fun tanh(x: Dual) = sinh(x) / cosh(x)
 fun coth(x: Dual) = cosh(x) / sinh(x)
+fun sech(x: Dual) = 1.0 / cosh(x)
+fun csch(x: Dual) = 1.0 / sinh(x)
 fun pow(x: Dual, n: Double): Dual = x.function({ it.pow(n) }) { n * pow(it, n - 1) }
 fun pow(x: Dual, n: Int): Dual = x.function({ it.pow(n) }) { n.toDouble() * pow(it, n - 1) }
 fun sqrt(x: Dual): Dual = x.function({ sqrt(it) }) { 1.0 / (2.0 * sqrt(it)) }
@@ -448,6 +454,26 @@ fun ln(x: Dual): Dual = x.function({ ln(it) }) { 1.0 / it }
 fun exp(x: Dual): Dual = x.function({ exp(it) }) { exp(it) }
 // Exercise for the reader (Grissess):
 // exponential and logarithmic function with custom base
+
+fun Dual.approxEq(other: Dual, eps: Double = DUAL_COMPARE_EPS) : Boolean {
+    val size = this.size
+
+    if(size != other.size) {
+        return false
+    }
+
+    var i = 0
+    while (i < size) {
+        if(!this[i].approxEq(other[i], eps)) {
+            return false
+        }
+
+        i++
+    }
+
+    return true
+}
+
 
 data class DualArray(val values: List<DoubleArray>) : AbstractList<Dual>() {
     override val size: Int = if (values.isNotEmpty()) {
