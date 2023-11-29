@@ -1085,12 +1085,16 @@ fun avg(a: Vector4d, b: Vector4d, c: Vector4d) = (a + b + c) / 3.0
 fun avg(a: Vector4d, b: Vector4d, c: Vector4d, d: Vector4d) = (a + b + c + d) / 4.0
 fun avg(vectors: List<Vector4d>) = vectors.reduce { a, b -> a + b } / vectors.size.toDouble()
 
+data class AxisAngle3d(val axis: Vector3d, val angle: Double)
+
 data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double) {
-    val normSqr get() = x * x + y * y + z * z + w * w
+    val normSqr get() = this dot this
     val norm get() = sqrt(normSqr)
     fun normalized() = this / norm
     val xyz get() = Vector3d(x, y, z)
     val inverse get() = Rotation3d(-x, -y, -z, w) / normSqr
+
+    infix fun dot(other: Rotation3d) = this.x * other.x + this.y * other.y + this.z * other.z + this.w * other.w
 
     fun log(): Vector3d {
         val n = xyz.norm
@@ -1099,6 +1103,18 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
             2.0 / w - 2.0 / 3.0 * n * n / (w * w * w)
         } else {
             2.0 * atan2(n * snz(w), w * snz(w)) / n
+        }
+    }
+
+    fun toAxisAngle() : AxisAngle3d {
+        val euler = log() // Mathematics was invented by Euler, keep that in mind
+        val angle = euler.norm
+
+        return if(angle == 0.0) {
+            // Possible?
+            AxisAngle3d(Vector3d.zero, 0.0)
+        } else {
+            AxisAngle3d(euler / angle, angle)
         }
     }
 
@@ -1158,7 +1174,8 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 
     operator fun invoke(k: Double) = exp(log() * k)
 
-    fun approxEq(other: Rotation3d, eps: Double = GEOMETRY_COMPARE_EPS) = x.approxEq(other.x, eps) && y.approxEq(other.y, eps) && z.approxEq(other.z, eps) && w.approxEq(other.w, eps)
+    fun approxEqComponentWise(other: Rotation3d, eps: Double = GEOMETRY_COMPARE_EPS) = x.approxEq(other.x, eps) && y.approxEq(other.y, eps) && z.approxEq(other.z, eps) && w.approxEq(other.w, eps)
+    fun approxEq(other: Rotation3d, eps: Double = GEOMETRY_COMPARE_EPS) = abs(this dot other).approxEq(1.0, eps)
 
     companion object {
         val identity = Rotation3d(0.0, 0.0, 0.0, 1.0)
@@ -1176,7 +1193,9 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
             return Rotation3d(axis.x * s, axis.y * s, axis.z * s, cos(t / 2.0))
         }
 
-        fun fromAxisAngle(axis: Vector3d, angle: Double) = exp(axis.normalizedNz() * angle)
+        fun fromAxisAngle(axis: Vector3d, angle: Double) = exp(axis.normalized() * angle)
+
+        fun fromAxisAngle(axisAngle3d: AxisAngle3d) = Companion.fromAxisAngle(axisAngle3d.axis, axisAngle3d.angle)
 
         fun fromRotationMatrix(matrix: Matrix3x3): Rotation3d {
             val c0 = matrix.c0
@@ -1337,11 +1356,11 @@ data class Rotation3dDual(val x: Dual, val y: Dual, val z: Dual, val w: Dual) {
         fun fromAxisAngle(axis: Vector3dDual, angle: Dual) = exp(axis.normalized() * angle)
 
         fun exp(w: Vector3dDual): Rotation3dDual {
-            val t = w.norm
-            val axis = w.normalized()
-            val s = sin(t / 2.0)
+            val angle = w.norm
+            val axis = w / angle
+            val s = sin(angle / 2.0)
 
-            return Rotation3dDual(axis.x * s, axis.y * s, axis.z * s, cos(t / 2.0))
+            return Rotation3dDual(axis.x * s, axis.y * s, axis.z * s, cos(angle / 2.0))
         }
     }
 }
@@ -1404,6 +1423,23 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     }
 
     companion object {
+        val identity = Pose3d(Vector3d.zero, Rotation3d.identity)
+
+        fun fromMatrix(matrix: Matrix4x4) : Pose3d {
+            val (c0, c1, c2, c3) = matrix
+
+            return Pose3d(
+                Vector3d(c3.x, c3.y, c3.z),
+                Rotation3d.fromRotationMatrix(
+                    Matrix3x3(
+                        c0.x, c1.x, c2.x,
+                        c0.y, c1.y, c2.y,
+                        c0.z, c1.z, c2.z
+                    )
+                )
+            )
+        }
+
         fun exp(incr: Twist3dIncr): Pose3d {
             val t = incr.rotIncr.norm
             val t2 = t * t

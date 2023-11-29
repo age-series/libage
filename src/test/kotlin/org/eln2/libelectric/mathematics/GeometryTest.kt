@@ -125,4 +125,77 @@ internal class GeometryTest {
             }
         }
     }
+
+    @Test
+    fun pose3dTest() {
+        assertEquals(Pose3d.identity, Pose3d.exp(Twist3dIncr(Vector3d.zero, Vector3d.zero)))
+
+        rangeScanKd(3, start = -100.0, end = 100.0, steps = 10) { rotation ->
+            rangeScanKd(3, start = -100.0, end = 100.0, steps = 10) { translation ->
+                val pose = Pose3d(
+                    Vector3d(translation[0], translation[1], translation[2]),
+                    Rotation3d.exp(Vector3d(rotation[0], rotation[1], rotation[2]))
+                )
+
+                val log = pose.log()
+
+                let {
+                    assertEquals(pose, pose)
+                    assertTrue(pose.approxEq(Pose3d.exp(log)))
+                    assertTrue((pose.inverse * pose).approxEq(Pose3d.identity))
+                    assertTrue((pose * pose.inverse).approxEq(Pose3d.identity))
+                }
+
+                assertTrue(pose.approxEq(Pose3d.fromMatrix(pose())))
+            }
+        }
+    }
+
+    @Test
+    fun rotation3dTest() {
+        assertEquals(Rotation3d.identity, Rotation3d.exp(Vector3d.zero))
+        assertTrue(Rotation3d.identity.approxEq(Rotation3d.exp(Vector3d.one * 1e-10)))
+        assertTrue(Rotation3d.identity.approxEq(Rotation3d.exp(Vector3d.one * 1e-12)))
+        assertTrue(Rotation3d.identity.approxEq(Rotation3d.exp(Vector3d.one * 1e-15)))
+        assertTrue(Rotation3d.identity.approxEq(Rotation3d.exp(Vector3d.one * 1e-16)))
+        assertTrue(Rotation3d.identity.approxEq(Rotation3d.exp(Vector3d.one * 1e-20)))
+
+        rangeScanKd(3, start = -10.0, end = 10.0, steps = 10) { r ->
+            val rotation = Rotation3d.exp(Vector3d(r[0], r[1], r[2]))
+            val log = rotation.log()
+
+            let {
+                assertEquals(rotation, rotation)
+                assertTrue(rotation.approxEq(rotation(1.0)))
+                assertTrue(Rotation3d.identity.approxEq(rotation(0.0)))
+                assertTrue((rotation * rotation.inverse).approxEq(Rotation3d.identity))
+                assertTrue((rotation.inverse * rotation).approxEq(Rotation3d.identity))
+                assertTrue(rotation.approxEq(Rotation3d.exp(log)))
+                assertTrue(log.approxEq(Rotation3d.exp(log).log()))
+            }
+
+            let {
+                val v2 = Vector3d(r[0], r[1], r[2]) * 1e-5
+                val angle = v2.norm
+                assertTrue(angle.approxEq(Rotation3d.exp(v2).log().norm))
+            }
+
+            let {
+                val matrix = rotation()
+                assertTrue(Rotation3d.fromRotationMatrix(matrix).approxEq(rotation))
+                assertTrue(matrix.isSpecialOrthogonal)
+            }
+        }
+
+        rangeScanKd(3, start = -10.0, end = 10.0, steps = 10) { r1 ->
+            val a = Rotation3d.exp(Vector3d(r1[0], r1[1], r1[2]))
+
+            rangeScanKd(3, start = -10.0, end = 10.0, steps = 10) { r2 ->
+                val b = Rotation3d.exp(Vector3d(r2[0], r2[1], r2[2]))
+
+                assertTrue((a + (b - a)).approxEq(b))
+                assertTrue((a * (b / a)).approxEq(b))
+            }
+        }
+    }
 }
