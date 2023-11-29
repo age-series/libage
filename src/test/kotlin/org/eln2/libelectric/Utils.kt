@@ -3,6 +3,7 @@ package org.eln2.libelectric
 import org.ageseries.libage.mathematics.Dual
 import org.ageseries.libage.mathematics.approxEq
 import org.junit.jupiter.api.Assertions
+import kotlin.math.sign
 
 internal object TestUtils {
     private const val COMPARE_EPS = 1e-7
@@ -45,7 +46,10 @@ internal object TestUtils {
 
     fun areEqual(vararg reals : Double) {
         for (i in 1 until reals.size) {
-            Assertions.assertTrue(reals[i - 1].approxEq(reals[i], COMPARE_EPS))
+            val a = reals[i - 1]
+            val b = reals[i]
+
+            Assertions.assertTrue(a.approxEq(b, COMPARE_EPS))
         }
     }
 

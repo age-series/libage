@@ -444,19 +444,18 @@ data class Vector2d(val x: Double, val y: Double) {
     infix fun dot(b: Vector2d) = x * b.x + y * b.y
     val normSqr get() = this dot this
     val norm get() = sqrt(normSqr)
-    infix fun distTo(b: Vector2d) = (this - b).norm
-    infix fun distToSqr(b: Vector2d) = (this - b).normSqr
+    infix fun distanceTo(b: Vector2d) = (this - b).norm
+    infix fun distanceToSqr(b: Vector2d) = (this - b).normSqr
     fun nz() = Vector2d(x.nz(), y.nz())
     fun normalized() = this / norm
     fun normalizedNz() = this.nz() / norm.nz()
-    val perpLeft get() = Vector2d(-y, x)
-    val perpRight get() = Vector2d(y, -x)
+    val perpendicularLeft get() = Vector2d(-y, x)
+    val perpendicularRight get() = Vector2d(y, -x)
 
     fun approxEq(other: Vector2d, eps: Double = GEOMETRY_COMPARE_EPS) = x.approxEq(other.x, eps) && y.approxEq(other.y, eps)
 
     override fun toString() = "x=$x, y=$y"
 
-    operator fun rangeTo(b: Vector2d) = this distTo b
     operator fun unaryPlus() = this
     operator fun unaryMinus() = Vector2d(-x, -y)
     operator fun plus(other: Vector2d) = Vector2d(x + other.x, y + other.y)
@@ -478,13 +477,15 @@ data class Vector2d(val x: Double, val y: Double) {
             lerp(a.x, b.x, t),
             lerp(a.y, b.y, t)
         )
+
+        fun min(a: Vector2d, b: Vector2d) = Vector2d(min(a.x, b.x), min(a.y, b.y))
+
+        fun max(a: Vector2d, b: Vector2d) = Vector2d(max(a.x, b.x), max(a.y, b.y))
     }
 }
 
 infix fun Vector2d.o(other: Vector2d) = this dot other
-
-fun min(a: Vector2d, b: Vector2d) = Vector2d(min(a.x, b.x), min(a.y, b.y))
-fun max(a: Vector2d, b: Vector2d) = Vector2d(max(a.x, b.x), max(a.y, b.y))
+operator fun Vector2d.rangeTo(b: Vector2d) = this distanceTo b
 
 data class Vector2dDual(val x: Dual, val y: Dual) {
     constructor(value: Dual) : this(value, value)
@@ -540,7 +541,7 @@ data class Rotation2d(val re: Double, val im: Double) {
 
     fun approxEq(other: Rotation2d, eps: Double = GEOMETRY_COMPARE_EPS) = re.approxEq(other.re, eps) && im.approxEq(other.im, eps)
 
-    override fun toString() = "${Math.toDegrees(log())} deg"
+    override fun toString() = "θ×=${Math.toDegrees(log())} deg"
 
     operator fun not() = this.inverse
     operator fun times(b: Rotation2d) = Rotation2d(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re)
@@ -565,18 +566,17 @@ data class Rotation2d(val re: Double, val im: Double) {
 }
 
 data class Rotation2dDual(val re: Dual, val im: Dual) {
+    fun log() = atan2(im, re)
+    fun scaled(k: Double) = exp(log() * k)
     val value get() = Rotation2d(re.value, im.value)
     val angularVelocity get() = re * im.tail() - im * re.tail()
     val inverse get() = Rotation2dDual(re, -im)
     val direction get() = Vector2dDual(re, im)
 
     operator fun not() = this.inverse
-    operator fun times(b: Rotation2dDual) =
-        Rotation2dDual(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re)
-
+    operator fun times(b: Rotation2dDual) = Rotation2dDual(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re)
     operator fun times(b: Rotation2d) = Rotation2dDual(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re)
-    operator fun times(r2: Vector2dDual) =
-        Vector2dDual(this.re * r2.x - this.im * r2.y, this.im * r2.x + this.re * r2.y)
+    operator fun times(r2: Vector2dDual) = Vector2dDual(this.re * r2.x - this.im * r2.y, this.im * r2.x + this.re * r2.y)
 
     operator fun times(r2: Vector2d) = Vector2dDual(this.re * r2.x - this.im * r2.y, this.im * r2.x + this.re * r2.y)
 
@@ -589,6 +589,8 @@ data class Rotation2dDual(val re: Dual, val im: Dual) {
 
 data class Twist2dIncr(val trIncr: Vector2d, val rotIncr: Double) {
     constructor(xIncr: Double, yIncr: Double, rotIncr: Double) : this(Vector2d(xIncr, yIncr), rotIncr)
+
+    override fun toString() = "X=${trIncr.x} Y=${trIncr.y} R=$rotIncr"
 }
 
 data class Twist2dIncrDual(val trIncr: Vector2dDual, val rotIncr: Dual) {
@@ -636,6 +638,26 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
 
     fun log(): Twist2dIncr {
         val angle = rotation.log()
+        val u = 0.5 * angle
+        val c = rotation.re - 1.0
+
+        val ht = if (abs(c) < 1e-9) {
+            1.0 - 1.0 / 12.0 * (angle * angle)
+        } else {
+            -u * rotation.im / c
+        }
+
+        return Twist2dIncr(
+            Vector2d(
+                ht * translation.x + u * translation.y,
+                -u * translation.x + ht * translation.y
+            ),
+            angle
+        )
+    }
+
+    fun logE(): Twist2dIncr {
+        val angle = rotation.log()
         val u = (0.5 * angle).nz()
         val ht = u / tan(u)
 
@@ -648,8 +670,7 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
         )
     }
 
-    fun approxEqs(other: Pose2d, eps: Double = GEOMETRY_COMPARE_EPS) =
-        translation.approxEq(other.translation, eps) && rotation.approxEq(other.rotation, eps)
+    fun approxEq(other: Pose2d, eps: Double = GEOMETRY_COMPARE_EPS) = translation.approxEq(other.translation, eps) && rotation.approxEq(other.rotation, eps)
 
     override fun toString() = "$translation $rotation"
 
@@ -661,17 +682,41 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
     operator fun minus(b: Pose2d) = (this / b).log()
 
     companion object {
-        fun exp(incr: Twist2dIncr): Pose2d {
-            val u = incr.rotIncr.nz() // Replaces series expansion (maybe)
+        val identity = Pose2d(Vector2d.zero, Rotation2d.identity)
+
+        fun exp(tw: Twist2dIncr): Pose2d {
+            val z = Rotation2d.exp(tw.rotIncr)
+            val s: Double
+            val c: Double
+
+            if (abs(tw.rotIncr) < 1e-9) {
+                s = 1.0 - 1.0 / 6.0 * tw.rotIncr * tw.rotIncr
+                c = 0.5 * tw.rotIncr
+            } else {
+                s = z.im / tw.rotIncr
+                c = (1.0 - z.re) / tw.rotIncr
+            }
+
+            return Pose2d(
+                Vector2d(
+                    s * tw.trIncr.x - c * tw.trIncr.y,
+                    c * tw.trIncr.x + s * tw.trIncr.y
+                ),
+                z
+            )
+        }
+
+        fun expE(tw: Twist2dIncr): Pose2d {
+            val u = tw.rotIncr.nz()
             val c = 1.0 - cos(u)
             val s = sin(u)
 
             return Pose2d(
                 Vector2d(
-                    (s * incr.trIncr.x - c * incr.trIncr.y) / u,
-                    (c * incr.trIncr.x + s * incr.trIncr.y) / u
+                    (s * tw.trIncr.x - c * tw.trIncr.y) / u,
+                    (c * tw.trIncr.x + s * tw.trIncr.y) / u
                 ),
-                Rotation2d.exp(incr.rotIncr)
+                Rotation2d.exp(tw.rotIncr)
             )
         }
     }
@@ -835,9 +880,9 @@ data class Vector3d(val x: Double, val y: Double, val z: Double) {
     }
 }
 
-operator fun Vector3d.rangeTo(b: Vector3d) = this distanceTo b
 infix fun Vector3d.o(other: Vector3d) = this dot other
 infix fun Vector3d.x(other: Vector3d) = this cross other
+operator fun Vector3d.rangeTo(b: Vector3d) = this distanceTo b
 
 fun min(a: Vector3d, b: Vector3d) = Vector3d(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z))
 fun max(a: Vector3d, b: Vector3d) = Vector3d(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z))
@@ -853,7 +898,9 @@ data class Vector3dDual(val x: Dual, val y: Dual, val z: Dual) {
     )
 
     init {
-        require(x.size == y.size && y.size == z.size) { "Dual X, Y and Z must be of the same size" }
+        require(x.size == y.size && y.size == z.size) {
+            "Dual X, Y and Z must be of the same size"
+        }
     }
 
     val size get() = x.size
@@ -931,8 +978,8 @@ data class Vector4d(val x: Double, val y: Double, val z: Double, val w: Double) 
     infix fun dot(b: Vector4d) = x * b.x + y * b.y + z * b.z + w * b.w
     val normSqr get() = this dot this
     val norm get() = sqrt(normSqr)
-    infix fun distTo(b: Vector4d) = (this - b).norm
-    infix fun distToSqr(b: Vector4d) = (this - b).normSqr
+    infix fun distanceTo(b: Vector4d) = (this - b).norm
+    infix fun distanceToSqr(b: Vector4d) = (this - b).normSqr
     infix fun cosAngle(b: Vector4d) = (this o b) / (this.norm * b.norm)
     infix fun angle(b: Vector4d) = acos((this cosAngle b).coerceIn(-1.0, 1.0))
 
@@ -944,7 +991,7 @@ data class Vector4d(val x: Double, val y: Double, val z: Double, val w: Double) 
 
     override fun toString() = "x=$x, y=$y, z=$z, w=$w"
 
-    operator fun rangeTo(b: Vector4d) = this distTo b
+    operator fun rangeTo(b: Vector4d) = this distanceTo b
     operator fun unaryPlus() = this
     operator fun unaryMinus() = Vector4d(-x, -y, -z, -w)
     operator fun plus(b: Vector4d) = Vector4d(x + b.x, y + b.y, z + b.z, w + b.w)
@@ -1047,8 +1094,12 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 
     fun log(): Vector3d {
         val n = xyz.norm
-        return xyz * if (n < 1e-9) 2.0 / w - 2.0 / 3.0 * n * n / (w * w * w)
-        else 2.0 * atan2(n * snz(w), w * snz(w)) / n
+
+        return xyz * if (n < 1e-9) {
+            2.0 / w - 2.0 / 3.0 * n * n / (w * w * w)
+        } else {
+            2.0 * atan2(n * snz(w), w * snz(w)) / n
+        }
     }
 
     operator fun times(scalar: Double) = Rotation3d(x * scalar, y * scalar, z * scalar, w * scalar)
@@ -1210,6 +1261,16 @@ data class Rotation3dDual(val x: Dual, val y: Dual, val z: Dual, val w: Dual) {
     val inverse get() = Rotation3dDual(-x, -y, -z, w) / normSqr
     val value get() = Rotation3d(x.value, y.value, z.value, w.value)
 
+    fun log(): Vector3dDual {
+        val n = xyz.norm
+
+        return xyz * if (n.value < 1e-9) {
+            2.0 / w - 2.0 / 3.0 * n * n / (w * w * w)
+        } else {
+            2.0 * atan2(n * snz(w.value), w * snz(w.value)) / n
+        }
+    }
+
     val angularVelocity: Vector3dDual
         get() {
             val n = xyz.norm
@@ -1307,11 +1368,13 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
         val w = rotation.log()
         val wx = Rotation3d.alg(w)
         val t = w.norm
+        val t2 = t * t
 
         val c = if (abs(t) < 1e-7) {
-            1 / 12.0 + t * t / 720.0 + t * t * (t * t) / 30240.0
+            1 / 12.0 + t2 / 720.0 + t2 * t2 / 30240.0
         } else {
-            (1.0 - sin(t) / t / (2.0 * ((1 - cos(t)) / (t * t)))) / (t * t)
+            // Evaluates to -Inf at 1e-8
+            (1.0 - sin(t) / t / (2.0 * ((1.0 - cos(t)) / t2))) / t2
         }
 
         return Twist3dIncr(
@@ -1327,11 +1390,12 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     operator fun plus(incr: Twist3dIncr) = this * exp(incr)
     operator fun minus(b: Pose3d) = (this / b).log()
 
-    fun approxEq(other: Pose3d, eps: Double = GEOMETRY_COMPARE_EPS) =
-        translation.approxEq(other.translation) && rotation.approxEq(other.rotation)
+    fun approxEq(other: Pose3d, eps: Double = GEOMETRY_COMPARE_EPS) = translation.approxEq(other.translation) && rotation.approxEq(other.rotation)
 
-    operator fun invoke() = rotation().let { (rc0, rc1, rc2) ->
-        Matrix4x4(
+    operator fun invoke() : Matrix4x4 {
+        val (rc0, rc1, rc2) = rotation()
+
+        return Matrix4x4(
             rc0.x, rc1.x, rc2.x, translation.x,
             rc0.y, rc1.y, rc2.y, translation.y,
             rc0.z, rc1.z, rc2.z, translation.z,
@@ -1342,16 +1406,18 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     companion object {
         fun exp(incr: Twist3dIncr): Pose3d {
             val t = incr.rotIncr.norm
+            val t2 = t * t
+            val t4 = t2 * t2
 
             val b: Double
             val c: Double
 
             if (abs(t) < 1e-7) {
-                b = 1.0 / 2.0 - t * t / 24.0 + t * t * (t * t) / 720.0
-                c = 1.0 / 6.0 - t * t / 120.0 + t * t * (t * t) / 5040.0
+                b = 1.0 / 2.0 - t2 / 24.0 + t4 / 720.0
+                c = 1.0 / 6.0 - t2 / 120.0 + t4 / 5040.0
             } else {
-                b = (1.0 - cos(t)) / (t * t)
-                c = (1.0 - sin(t) / t) / (t * t)
+                b = (1.0 - cos(t)) / t2
+                c = (1.0 - sin(t) / t) / t2
             }
 
             val wx = Rotation3d.alg(incr.rotIncr)

@@ -242,7 +242,9 @@ fun coth(x: Double) = cosh(x) / sinh(x)
 fun sech(x: Double) = 1.0 / cosh(x)
 fun csch(x: Double) = 1.0 / sinh(x)
 
-// grissess, have fun unit testing :fishmagnifique:
+/**
+ * I'm [Vector3d.cross] with Grissess. I ended up making those tests
+ * */
 
 class Dual private constructor(private val values: DoubleArray) : AbstractList<Double>() {
     constructor(values: List<Double>) : this(values.toDoubleArray())
@@ -406,6 +408,8 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
     }
 
     companion object {
+        val empty = Dual(doubleArrayOf())
+
         fun const(x: Double, n: Int = 1) = Dual(DoubleArray(n).also { it[0] = x })
 
         fun variable(v: Double, n: Int = 1) = Dual(
@@ -419,6 +423,26 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
 
         fun of(vararg values: Double) = Dual(values.asList())
 
+        /**
+         * Adjusts [a] and [b] using the [head] operator so that their [size] is equal to the smallest size between [a] and [b].
+         * */
+        fun intersect(a: Dual, b: Dual) : Pair<Dual, Dual> {
+            val sizeA = a.size
+            val sizeB = b.size
+
+            return if(sizeA == sizeB) {
+                Pair(a, b)
+            } else if(sizeA < sizeB) {
+                Pair(a, b.head(sizeB - sizeA))
+            } else {
+                Pair(a.head(sizeA - sizeB), b)
+            }
+        }
+
+        /**
+         * Constructs a [Dual] referencing the [array] without a defensive copy.
+         * Only appropriate to use when [array] is guaranteed to not be mutated after the resulting [Dual] is in use.
+         * */
         @Internal
         fun castFromArray(array: DoubleArray) = Dual(array)
     }
@@ -437,16 +461,22 @@ operator fun Double.div(dual: Dual) = this * (pow(dual, -1)) // Found that using
 
 fun sin(x: Dual): Dual = x.function({ sin(it) }) { cos(it) }
 fun cos(x: Dual): Dual = x.function({ cos(it) }) { -sin(it) }
-fun tan(x: Dual) = sin(x) / cos(x)
-fun cot(x: Dual) = cos(x) / sin(x)
-fun sec(x: Dual) = 1.0 / cos(x)
-fun csc(x: Dual) = 1.0 / sin(x)
+fun tan(x: Dual): Dual = sin(x) / cos(x)
+fun cot(x: Dual): Dual = cos(x) / sin(x)
+fun sec(x: Dual): Dual = 1.0 / cos(x)
+fun csc(x: Dual): Dual = 1.0 / sin(x)
 fun sinh(x: Dual): Dual = x.function({ sinh(it) }) { cosh(it) }
 fun cosh(x: Dual): Dual = x.function({ cosh(it) }) { sinh(it) }
-fun tanh(x: Dual) = sinh(x) / cosh(x)
-fun coth(x: Dual) = cosh(x) / sinh(x)
-fun sech(x: Dual) = 1.0 / cosh(x)
-fun csch(x: Dual) = 1.0 / sinh(x)
+fun tanh(x: Dual): Dual = sinh(x) / cosh(x)
+fun coth(x: Dual): Dual = cosh(x) / sinh(x)
+fun sech(x: Dual): Dual = 1.0 / cosh(x)
+fun csch(x: Dual): Dual = 1.0 / sinh(x)
+fun asin(x: Dual): Dual = x.function({ asin(it) }) { 1.0 / sqrt(1.0 - x * x) }
+fun acos(x: Dual): Dual = x.function({ acos(it) }) { -1.0 / sqrt(1.0 - x * x) }
+fun atan(x: Dual): Dual = x.function({ atan(it) }) { 1.0 / (x * x + 1.0)}
+fun asinh(x: Dual): Dual = x.function( { asinh(it) }) { 1.0 / sqrt(x * x + 1.0) }
+fun acosh(x: Dual): Dual = x.function( { acosh(it) }) { 1.0 / (sqrt(x - 1.0) * sqrt(x + 1.0)) }
+fun atanh(x: Dual): Dual = x.function( { atanh(it) }) { 1.0 / (1.0 - x * x) }
 fun pow(x: Dual, n: Double): Dual = x.function({ it.pow(n) }) { n * pow(it, n - 1) }
 fun pow(x: Dual, n: Int): Dual = x.function({ it.pow(n) }) { n.toDouble() * pow(it, n - 1) }
 fun sqrt(x: Dual): Dual = x.function({ sqrt(it) }) { 1.0 / (2.0 * sqrt(it)) }
@@ -454,6 +484,31 @@ fun ln(x: Dual): Dual = x.function({ ln(it) }) { 1.0 / it }
 fun exp(x: Dual): Dual = x.function({ exp(it) }) { exp(it) }
 // Exercise for the reader (Grissess):
 // exponential and logarithmic function with custom base
+
+/**
+ * Dual version of [kotlin.math.atan2]
+ * The **value** is evaluated with [kotlin.math.atan2], and the **tail** is evaluated like *arctan(y / x)* normally.
+ * This is justified because *arctan2(y, x)* is *arctan(y / x) + C*.
+ * */
+fun atan2(y: Dual, x: Dual) : Dual {
+    require(y.size == x.size) {
+        "Dual atan2 requires y(size=${y.size}) and x(size=${x.size}) be of same size"
+    }
+
+    val size = y.size
+
+    return if(size == 1) {
+        Dual.const(atan2(y.value, x.value))
+    }
+    else if(size > 1) {
+        val tangent = (y / x)
+        val head = tangent.head()
+        Dual(atan2(y.value, x.value), 1.0 / (head * head + 1.0) * tangent.tail())
+    }
+    else {
+        Dual.empty
+    }
+}
 
 fun Dual.approxEq(other: Dual, eps: Double = DUAL_COMPARE_EPS) : Boolean {
     val size = this.size
@@ -473,7 +528,6 @@ fun Dual.approxEq(other: Dual, eps: Double = DUAL_COMPARE_EPS) : Boolean {
 
     return true
 }
-
 
 data class DualArray(val values: List<DoubleArray>) : AbstractList<Dual>() {
     override val size: Int = if (values.isNotEmpty()) {
