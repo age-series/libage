@@ -602,6 +602,7 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
     constructor(x: Double, y: Double) : this(x, y, 0.0)
 
     val inverse get() = Pose2d(rotation.inverse * -translation, rotation.inverse)
+    operator fun not() = this.inverse
 
     fun ln(): Twist2dIncr {
         val angle = rotation.ln()
@@ -623,25 +624,10 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
         )
     }
 
-    fun lnE(): Twist2dIncr {
-        val angle = rotation.ln()
-        val u = (0.5 * angle).nz()
-        val ht = u / tan(u)
-
-        return Twist2dIncr(
-            Vector2d(
-                ht * translation.x + u * translation.y,
-                -u * translation.x + ht * translation.y
-            ),
-            angle
-        )
-    }
-
     fun approxEq(other: Pose2d, eps: Double = GEOMETRY_COMPARE_EPS) = translation.approxEq(other.translation, eps) && rotation.approxEq(other.rotation, eps)
 
     override fun toString() = "$translation $rotation"
 
-    operator fun not() = this.inverse
     operator fun times(b: Pose2d) = Pose2d(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
     operator fun times(v: Vector2d) = this.translation + this.rotation * v
     operator fun div(b: Pose2d) = b.inverse * this
@@ -673,34 +659,20 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
             )
         }
 
-        fun expE(tw: Twist2dIncr): Pose2d {
-            val u = tw.rotIncr.nz()
-            val c = 1.0 - cos(u)
-            val s = sin(u)
-
-            return Pose2d(
-                Vector2d(
-                    (s * tw.trIncr.x - c * tw.trIncr.y) / u,
-                    (c * tw.trIncr.x + s * tw.trIncr.y) / u
-                ),
-                Rotation2d.exp(tw.rotIncr)
-            )
-        }
     }
 }
 
 data class Pose2dDual(val translation: Vector2dDual, val rotation: Rotation2dDual) {
     val inverse get() = Pose2dDual(rotation.inverse * -translation, rotation.inverse)
+    operator fun not() = this.inverse
+
     val value get() = Pose2d(translation.value, rotation.value)
     val velocity get() = Twist2dDual(translation.tail(), rotation.angularVelocity)
 
     override fun toString() = "$translation $rotation"
 
-    operator fun not() = this.inverse
     operator fun times(b: Pose2dDual) = Pose2dDual(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
-
     operator fun times(b: Pose2d) = Pose2dDual(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
-
     operator fun times(b: Twist2dDual) = Twist2dDual(rotation * b.trVelocity, b.rotVelocity)
     operator fun div(b: Pose2dDual) = b.inverse * this
     operator fun plus(incr: Twist2dIncr) = this * Pose2d.exp(incr)
