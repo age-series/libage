@@ -11,6 +11,7 @@ const val DUAL_COMPARE_EPS = 1e-7
 const val INTEGRAL_SCAN_EPS = 1e-10
 const val SYMFORCE_EPS = 2.2e-15
 const val SYMFORCE_EPS_FLOAT = 1.2e-6f
+const val GOLDEN_RATIO = 1.618033988749895
 
 inline fun lerp(from: Double, to: Double, factor: Double) = (1.0 - factor) * from + factor * to
 inline fun lerp(from: Float, to: Float, factor: Float) = (1f - factor) * from + factor * to
@@ -18,28 +19,38 @@ inline fun lerp(from: Double, to: Double, factor: Dual) = (1.0 - factor) * from 
 inline fun lerp(from: Dual, to: Dual, factor: Dual) = (1.0 - factor) * from + factor * to
 
 /**
- * Computes the [base] raised to the specified power [exponent] efficiently.
+ * Raised to integer to the specified positive power relatively efficiently.
  * Optimized cases:
- *  - -1 (constant time)
+ *  - **1** and **-1** (constant time)
  * */
-fun powi(base: Int, exponent: Int): Int {
+fun Int.pow(exponent: Int): Int {
+    require(exponent >= 0)
+
+    var base = this
+
+    if(base == 1 || base == 0 || exponent == 1) {
+        return base
+    }
+
     if (base == -1) {
         return 1 * snzi(-exponent % 2)
     }
 
-    var b = base
-    var exp = exponent
+    var remaining = exponent
     var result = 1
 
     while (true) {
-        if (exp and 1 != 0) {
-            result *= b
+        if (remaining and 1 != 0) {
+            result *= base
         }
-        exp = exp shr 1
-        if (exp == 0) {
+
+        remaining = remaining shr 1
+
+        if (remaining == 0) {
             break
         }
-        b *= b
+
+        base *= base
     }
 
     return result
@@ -135,7 +146,6 @@ fun snzi(a: Int) = if (a >= 0) 1 else -1
 fun nsnzi(a: Int) = if (a <= 0) -1 else 1
 fun snzE(a: Double) = if (a >= 0.0) SYMFORCE_EPS else -SYMFORCE_EPS
 fun snzE(a: Float) = if (a >= 0f) SYMFORCE_EPS_FLOAT else -SYMFORCE_EPS_FLOAT
-fun nsnzE(a: Float) = if (a <= 0f) -SYMFORCE_EPS_FLOAT else SYMFORCE_EPS_FLOAT
 fun Double.nz() = this + snzE(this)
 fun Float.nz() = this + snzE(this)
 
@@ -245,14 +255,12 @@ fun csch(x: Double) = 1.0 / sinh(x)
 class Dual private constructor(private val values: DoubleArray) : AbstractList<Double>() {
     constructor(values: List<Double>) : this(values.toDoubleArray())
 
-    fun bind() = values.clone()
-
     /**
-     * Constructs a [Dual] from the value [value] and the [tail].
+     * Constructs a [Dual] from the value [head] and the [tail].
      * */
-    constructor(value: Double, tail: Dual) : this(
+    constructor(head: Double, tail: Dual) : this(
         DoubleArray(tail.values.size + 1).also {
-            it[0] = value
+            it[0] = head
 
             val size = tail.values.size
             var i = 0
@@ -280,6 +288,39 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
             it[i] = tail
         }
     )
+
+    /**
+     * Constructs a [Dual] from the [head] and the [tail].
+     * */
+    constructor(head: DoubleArray, tail: DoubleArray) : this(
+        DoubleArray(head.size + tail.size).also {
+            head.copyInto(it, destinationOffset = 0)
+            tail.copyInto(it, destinationOffset = head.size)
+        }
+    )
+
+    constructor(head: List<Double>, tail: List<Double>) : this(
+        DoubleArray(head.size + tail.size).also {
+            var sourceIndex = 0
+            var destinationIndex = 0
+
+            while (sourceIndex < head.size) {
+                it[destinationIndex++] = head[sourceIndex++]
+            }
+
+            sourceIndex = 0
+
+            while (sourceIndex < tail.size) {
+                it[destinationIndex++] = tail[sourceIndex++]
+            }
+        }
+    )
+
+    constructor(head: Dual, tail: Dual) : this(head.values, tail.values)
+    constructor(head: DoubleArray, tail: Dual) : this(head, tail.values)
+    constructor(head: Dual, tail: DoubleArray) : this(head.values, tail)
+
+    fun bind() = values.clone()
 
     override operator fun get(index: Int) = values[index]
 
@@ -417,7 +458,16 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
             }
         )
 
+        fun create(values: DoubleArray) = Dual(values.clone())
+
         fun of(vararg values: Double) = Dual(values.asList())
+
+        /**
+         * Constructs a [Dual] referencing the [array] without a defensive copy.
+         * Only appropriate to use when [array] is guaranteed to not be mutated after the resulting [Dual] is in use.
+         * */
+        @Internal
+        fun castFromArray(array: DoubleArray) = Dual(array)
 
         /**
          * Adjusts [a] and [b] using the [head] operator so that their [size] is equal to the smallest size between [a] and [b].
@@ -434,26 +484,13 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
                 Pair(a.head(sizeA - sizeB), b)
             }
         }
-
-        /**
-         * Constructs a [Dual] referencing the [array] without a defensive copy.
-         * Only appropriate to use when [array] is guaranteed to not be mutated after the resulting [Dual] is in use.
-         * */
-        @Internal
-        fun castFromArray(array: DoubleArray) = Dual(array)
     }
 }
 
 operator fun Double.plus(dual: Dual) = dual.mapValue { this + it }
 operator fun Double.minus(dual: Dual) = dual.mapValueAndTail({ this - it }, { -it })
 operator fun Double.times(dual: Dual) = dual.map { this * it }
-operator fun Double.div(dual: Dual) = this * (pow(dual, -1)) // Found that using the power then product is much quicker to compute! But it introduces some extra numerical error...
-
-/**
- * Future implementors (Grissess), do:
- * - Generate derivatives for sin, cos, pow, etc. instead of using dual for it
- * - Replace tan, tanh etc. to calls to the function itself and generate derivatives
- * */
+operator fun Double.div(dual: Dual) = this * (dual.pow(-1)) // Found that using the power then product is much quicker to compute! But it introduces some extra numerical error...
 
 fun sin(x: Dual): Dual = x.function({ sin(it) }) { cos(it) }
 fun cos(x: Dual): Dual = x.function({ cos(it) }) { -sin(it) }
@@ -473,8 +510,8 @@ fun atan(x: Dual): Dual = x.function({ atan(it) }) { 1.0 / (x * x + 1.0)}
 fun asinh(x: Dual): Dual = x.function( { asinh(it) }) { 1.0 / sqrt(x * x + 1.0) }
 fun acosh(x: Dual): Dual = x.function( { acosh(it) }) { 1.0 / (sqrt(x - 1.0) * sqrt(x + 1.0)) }
 fun atanh(x: Dual): Dual = x.function( { atanh(it) }) { 1.0 / (1.0 - x * x) }
-fun pow(x: Dual, n: Double): Dual = x.function({ it.pow(n) }) { n * pow(it, n - 1) }
-fun pow(x: Dual, n: Int): Dual = x.function({ it.pow(n) }) { n.toDouble() * pow(it, n - 1) }
+fun Dual.pow(n: Double): Dual = this.function({ it.pow(n) }) { n * it.pow(n - 1.0) }
+fun Dual.pow(n: Int): Dual = this.function({ it.pow(n) }) { n.toDouble() * it.pow(n - 1) }
 fun sqrt(x: Dual): Dual = x.function({ sqrt(it) }) { 1.0 / (2.0 * sqrt(it)) }
 fun ln(x: Dual): Dual = x.function({ ln(it) }) { 1.0 / it }
 fun exp(x: Dual): Dual = x.function({ exp(it) }) { exp(it) }
@@ -523,37 +560,4 @@ fun Dual.approxEq(other: Dual, eps: Double = DUAL_COMPARE_EPS) : Boolean {
     }
 
     return true
-}
-
-data class DualArray(val values: List<DoubleArray>) : AbstractList<Dual>() {
-    override val size: Int = if (values.isNotEmpty()) {
-        val result = values[0].size
-        require(values.all { it.size == result })
-        result
-    } else {
-        0
-    }
-
-    override operator fun get(index: Int) = Dual(values.map { it[index] })
-    operator fun set(index: Int, dual: Dual) = values.forEachIndexed { iDual, arr -> arr[index] = dual[iDual] }
-
-    fun toList(): ArrayList<Dual> {
-        val result =  ArrayList<Dual>(size)
-
-        for (i in 0 until size) {
-            result.add(this[i])
-        }
-
-        return result
-    }
-
-    companion object {
-        fun ofZeros(count: Int, dualSize: Int) = DualArray(
-            ArrayList<DoubleArray>(dualSize).apply {
-                repeat(dualSize) {
-                    this.add(DoubleArray(count))
-                }
-            }
-        )
-    }
 }

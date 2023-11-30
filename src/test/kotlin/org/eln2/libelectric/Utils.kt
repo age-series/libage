@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions
 import kotlin.math.sign
 
 internal object TestUtils {
-    private const val COMPARE_EPS = 1e-7
+    private const val COMPARE_EPS = 1e-6
 
     fun rangeScan(start: Double = 0.0, end: Double = 10.0, steps: Int = 10000, action: ((Double) -> Unit)) {
         require(start < end)

@@ -2,6 +2,7 @@
 
 package org.ageseries.libage.mathematics
 
+import java.util.ArrayList
 import kotlin.math.*
 
 private const val GEOMETRY_COMPARE_EPS = 1e-8
@@ -109,23 +110,20 @@ data class Matrix3x3(val c0: Vector3d, val c1: Vector3d, val c2: Vector3d) {
 
 data class Matrix3x3Dual(val c0: Vector3dDual, val c1: Vector3dDual, val c2: Vector3dDual) {
     constructor(
-        m00: Dual,
-        m01: Dual,
-        m02: Dual,
-        m10: Dual,
-        m11: Dual,
-        m12: Dual,
-        m20: Dual,
-        m21: Dual,
-        m22: Dual,
+        m00: Dual, m01: Dual, m02: Dual,
+        m10: Dual, m11: Dual, m12: Dual,
+        m20: Dual, m21: Dual, m22: Dual,
     ) : this(
         Vector3dDual(m00, m10, m20),
         Vector3dDual(m01, m11, m21),
         Vector3dDual(m02, m12, m22)
     )
 
-    constructor(mat: DualArray) : this(mat[0], mat[1], mat[2], mat[3], mat[4], mat[5], mat[6], mat[7], mat[8])
-    constructor(mat: List<Dual>) : this(mat[0], mat[1], mat[2], mat[3], mat[4], mat[5], mat[6], mat[7], mat[8])
+    constructor(mat: List<Dual>) : this(
+        mat[0], mat[1], mat[2],
+        mat[3], mat[4], mat[5],
+        mat[6], mat[7], mat[8]
+    )
 
     init {
         require(c0.size == c1.size && c1.size == c2.size)
@@ -140,7 +138,6 @@ data class Matrix3x3Dual(val c0: Vector3dDual, val c1: Vector3dDual, val c2: Vec
     val value = Matrix3x3(c0.value, c1.value, c2.value)
     fun head(n: Int) = Matrix3x3Dual(c0.head(n), c1.head(n), c2.head(n))
     fun tail(n: Int) = Matrix3x3Dual(c0.tail(n), c1.tail(n), c2.tail(n))
-
     val transpose get() = Matrix3x3Dual(r0, r1, r2)
     val trace get() = c0.x + c1.y + c2.z
     val normFrobeniusSqr get() = c0.normSqr + c1.normSqr + c2.normSqr
@@ -174,22 +171,10 @@ data class Matrix3x3Dual(val c0: Vector3dDual, val c1: Vector3dDual, val c2: Vec
 
 data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c3: Vector4d) {
     constructor(
-        m00: Double,
-        m01: Double,
-        m02: Double,
-        m03: Double,
-        m10: Double,
-        m11: Double,
-        m12: Double,
-        m13: Double,
-        m20: Double,
-        m21: Double,
-        m22: Double,
-        m23: Double,
-        m30: Double,
-        m31: Double,
-        m32: Double,
-        m33: Double,
+        m00: Double, m01: Double, m02: Double, m03: Double,
+        m10: Double, m11: Double, m12: Double, m13: Double,
+        m20: Double, m21: Double, m22: Double, m23: Double,
+        m30: Double, m31: Double, m32: Double, m33: Double,
     ) : this(
         Vector4d(m00, m10, m20, m30),
         Vector4d(m01, m11, m21, m31),
@@ -201,7 +186,6 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
     val r1 get() = Vector4d(c0.y, c1.y, c2.y, c3.y)
     val r2 get() = Vector4d(c0.z, c1.z, c2.z, c3.z)
     val r3 get() = Vector4d(c0.w, c1.w, c2.w, c3.w)
-
     val transpose get() = Matrix4x4(r0, r1, r2, r3)
     val trace get() = c0.x + c1.y + c2.z + c3.w
     val normFrobeniusSqr get() = c0.normSqr + c1.normSqr + c2.normSqr + c3.normSqr
@@ -212,9 +196,9 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
     val determinant
         get() =
             Matrix3x3(c1.y, c2.y, c3.y, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.x -
-                Matrix3x3(c1.x, c2.x, c3.x, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.y +
-                Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.w, c2.w, c3.w).determinant * c0.z -
-                Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.z, c2.z, c3.z).determinant * c0.w
+            Matrix3x3(c1.x, c2.x, c3.x, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.y +
+            Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.w, c2.w, c3.w).determinant * c0.z -
+            Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.z, c2.z, c3.z).determinant * c0.w
 
     fun eliminate(eliminateC: Int, eliminateR: Int): Matrix3x3 {
         val values = DoubleArray(3 * 3)
@@ -239,7 +223,7 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
     }
 
     fun minor(c: Int, r: Int) = eliminate(c, r).determinant
-    fun cofactor(c: Int, r: Int) = minor(c, r) * powi(-1, c + r)
+    fun cofactor(c: Int, r: Int) = minor(c, r) * (-1).pow(c + r)
     val cofactorMatrix
         get() = Matrix4x4(
             cofactor(0, 0), cofactor(1, 0), cofactor(2, 0), cofactor(3, 0),
@@ -291,22 +275,10 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
 
 data class Matrix4x4Dual(val c0: Vector4dDual, val c1: Vector4dDual, val c2: Vector4dDual, val c3: Vector4dDual) {
     constructor(
-        m00: Dual,
-        m01: Dual,
-        m02: Dual,
-        m03: Dual,
-        m10: Dual,
-        m11: Dual,
-        m12: Dual,
-        m13: Dual,
-        m20: Dual,
-        m21: Dual,
-        m22: Dual,
-        m23: Dual,
-        m30: Dual,
-        m31: Dual,
-        m32: Dual,
-        m33: Dual,
+        m00: Dual, m01: Dual, m02: Dual, m03: Dual,
+        m10: Dual, m11: Dual, m12: Dual, m13: Dual,
+        m20: Dual, m21: Dual, m22: Dual, m23: Dual,
+        m30: Dual, m31: Dual, m32: Dual, m33: Dual,
     ) : this(
         Vector4dDual(m00, m10, m20, m30),
         Vector4dDual(m01, m11, m21, m31),
@@ -315,22 +287,10 @@ data class Matrix4x4Dual(val c0: Vector4dDual, val c1: Vector4dDual, val c2: Vec
     )
 
     constructor(mat: List<Dual>) : this(
-        mat[0],
-        mat[1],
-        mat[2],
-        mat[3],
-        mat[4],
-        mat[5],
-        mat[6],
-        mat[7],
-        mat[8],
-        mat[9],
-        mat[10],
-        mat[11],
-        mat[12],
-        mat[13],
-        mat[14],
-        mat[15]
+        mat[0], mat[1], mat[2], mat[3],
+        mat[4], mat[5], mat[6], mat[7],
+        mat[8], mat[9], mat[10], mat[11],
+        mat[12], mat[13], mat[14], mat[15]
     )
 
     init {
@@ -355,15 +315,16 @@ data class Matrix4x4Dual(val c0: Vector4dDual, val c1: Vector4dDual, val c2: Vec
 
     // Inlined for performance. We're already down a deep rabbit hole of performance issues
     // because of our design (and ⅅ, like this matrix), so at least let me have this one.
-    val determinant
-        get() =
-            Matrix3x3Dual(c1.y, c2.y, c3.y, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.x -
-                Matrix3x3Dual(c1.x, c2.x, c3.x, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.y +
-                Matrix3x3Dual(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.w, c2.w, c3.w).determinant * c0.z -
-                Matrix3x3Dual(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.z, c2.z, c3.z).determinant * c0.w
+    val determinant get() =
+        Matrix3x3Dual(c1.y, c2.y, c3.y, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.x -
+        Matrix3x3Dual(c1.x, c2.x, c3.x, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.y +
+        Matrix3x3Dual(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.w, c2.w, c3.w).determinant * c0.z -
+        Matrix3x3Dual(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.z, c2.z, c3.z).determinant * c0.w
 
     fun eliminate(eliminateC: Int, eliminateR: Int): Matrix3x3Dual {
-        val values = DualArray.ofZeros(3 * 3, size)
+        val values = ArrayList<Dual>(9)
+
+        repeat(9) { values.add(Dual.empty) }
 
         var irActual = 0
         var icActual = 0
@@ -385,7 +346,7 @@ data class Matrix4x4Dual(val c0: Vector4dDual, val c1: Vector4dDual, val c2: Vec
     }
 
     fun minor(c: Int, r: Int) = eliminate(c, r).determinant
-    fun cofactor(c: Int, r: Int) = minor(c, r) * powi(-1, c + r).toDouble()
+    fun cofactor(c: Int, r: Int) = minor(c, r) * (-1).pow(c + r).toDouble()
     val cofactorMatrix
         get() = Matrix4x4Dual(
             cofactor(0, 0), cofactor(1, 0), cofactor(2, 0), cofactor(3, 0),
@@ -534,21 +495,21 @@ data class Vector2dDual(val x: Dual, val y: Dual) {
 infix fun Vector2dDual.o(other: Vector2dDual) = this dot other
 
 data class Rotation2d(val re: Double, val im: Double) {
-    fun log() = atan2(im, re)
-    fun scaled(k: Double) = exp(log() * k)
+    fun ln() = atan2(im, re)
+    fun scaled(k: Double) = exp(ln() * k)
     val inverse get() = Rotation2d(re, -im)
     val direction get() = Vector2d(re, im)
 
     fun approxEq(other: Rotation2d, eps: Double = GEOMETRY_COMPARE_EPS) = re.approxEq(other.re, eps) && im.approxEq(other.im, eps)
 
-    override fun toString() = "θ×=${Math.toDegrees(log())} deg"
+    override fun toString() = "θ×=${Math.toDegrees(ln())} deg"
 
     operator fun not() = this.inverse
     operator fun times(b: Rotation2d) = Rotation2d(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re)
     operator fun times(r2: Vector2d) = Vector2d(this.re * r2.x - this.im * r2.y, this.im * r2.x + this.re * r2.y)
     operator fun div(b: Rotation2d) = b.inverse * this
     operator fun plus(incr: Double) = this * exp(incr)
-    operator fun minus(b: Rotation2d) = (this / b).log()
+    operator fun minus(b: Rotation2d) = (this / b).ln()
 
     companion object {
         val identity = exp(0.0)
@@ -561,13 +522,13 @@ data class Rotation2d(val re: Double, val im: Double) {
             return Rotation2d(dir.x, dir.y)
         }
 
-        fun interpolate(r0: Rotation2d, r1: Rotation2d, t: Double) = exp(t * (r1 / r0).log()) * r0
+        fun interpolate(r0: Rotation2d, r1: Rotation2d, t: Double) = exp(t * (r1 / r0).ln()) * r0
     }
 }
 
 data class Rotation2dDual(val re: Dual, val im: Dual) {
-    fun log() = atan2(im, re)
-    fun scaled(k: Double) = exp(log() * k)
+    fun ln() = atan2(im, re)
+    fun scaled(k: Double) = exp(ln() * k)
     val value get() = Rotation2d(re.value, im.value)
     val angularVelocity get() = re * im.tail() - im * re.tail()
     val inverse get() = Rotation2dDual(re, -im)
@@ -636,8 +597,8 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
 
     val inverse get() = Pose2d(rotation.inverse * -translation, rotation.inverse)
 
-    fun log(): Twist2dIncr {
-        val angle = rotation.log()
+    fun ln(): Twist2dIncr {
+        val angle = rotation.ln()
         val u = 0.5 * angle
         val c = rotation.re - 1.0
 
@@ -656,8 +617,8 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
         )
     }
 
-    fun logE(): Twist2dIncr {
-        val angle = rotation.log()
+    fun lnE(): Twist2dIncr {
+        val angle = rotation.ln()
         val u = (0.5 * angle).nz()
         val ht = u / tan(u)
 
@@ -679,7 +640,7 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
     operator fun times(v: Vector2d) = this.translation + this.rotation * v
     operator fun div(b: Pose2d) = b.inverse * this
     operator fun plus(incr: Twist2dIncr) = this * exp(incr)
-    operator fun minus(b: Pose2d) = (this / b).log()
+    operator fun minus(b: Pose2d) = (this / b).ln()
 
     companion object {
         val identity = Pose2d(Vector2d.zero, Rotation2d.identity)
@@ -780,8 +741,8 @@ data class Vector3d(val x: Double, val y: Double, val z: Double) {
     val isUnit get() = normSqr.approxEq(1.0, GEOMETRY_NORMALIZED_EPS)
     infix fun distanceTo(b: Vector3d) = (this - b).norm
     infix fun distanceToSqr(b: Vector3d) = (this - b).normSqr
-    infix fun cosAngle(b: Vector3d) = (this dot b) / (this.norm * b.norm)
-    infix fun angle(b: Vector3d) = acos((this cosAngle b).coerceIn(-1.0, 1.0))
+    infix fun cosAngle(b: Vector3d) = ((this dot b) / (this.norm * b.norm)).coerceIn(-1.0, 1.0)
+    infix fun angle(b: Vector3d) = acos(this cosAngle b)
 
     fun nz() = Vector3d(x.nz(), y.nz(), z.nz())
     fun normalized() = this / norm
@@ -1108,7 +1069,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 
     infix fun dot(other: Rotation3d) = this.x * other.x + this.y * other.y + this.z * other.z + this.w * other.w
 
-    fun log(): Vector3d {
+    fun ln(): Vector3d {
         val n = xyz.norm
 
         return xyz * if (n < 1e-9) {
@@ -1119,7 +1080,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
     }
 
     fun toAxisAngle() : AxisAngle3d {
-        val euler = log() // Mathematics was invented by Euler, keep that in mind
+        val euler = ln() // Mathematics was invented by Euler, keep that in mind
         val angle = euler.norm
 
         return if(angle == 0.0) {
@@ -1164,7 +1125,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 
     operator fun div(b: Rotation3d) = b.inverse * this
     operator fun plus(w: Vector3d) = this * exp(w)
-    operator fun minus(b: Rotation3d) = (this / b).log()
+    operator fun minus(b: Rotation3d) = (this / b).ln()
 
     operator fun invoke() : Matrix3x3 {
         val `2xx` = 2.0 * (x * x)
@@ -1184,7 +1145,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
         )
     }
 
-    operator fun invoke(k: Double) = exp(log() * k)
+    operator fun invoke(k: Double) = exp(ln() * k)
 
     fun approxEqComponentWise(other: Rotation3d, eps: Double = GEOMETRY_COMPARE_EPS) = x.approxEq(other.x, eps) && y.approxEq(other.y, eps) && z.approxEq(other.z, eps) && w.approxEq(other.w, eps)
     fun approxEq(other: Rotation3d, eps: Double = GEOMETRY_COMPARE_EPS) = abs(this dot other).approxEq(1.0, eps)
@@ -1274,7 +1235,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
             -w.y, w.x, 0.0
         )
 
-        fun interpolate(r0: Rotation3d, r1: Rotation3d, t: Double) = exp((r1 / r0).log() * t) * r0
+        fun interpolate(r0: Rotation3d, r1: Rotation3d, t: Double) = exp((r1 / r0).ln() * t) * r0
     }
 }
 
@@ -1292,7 +1253,7 @@ data class Rotation3dDual(val x: Dual, val y: Dual, val z: Dual, val w: Dual) {
     val inverse get() = Rotation3dDual(-x, -y, -z, w) / normSqr
     val value get() = Rotation3d(x.value, y.value, z.value, w.value)
 
-    fun log(): Vector3dDual {
+    fun ln(): Vector3dDual {
         val n = xyz.norm
 
         return xyz * if (n.value < 1e-9) {
@@ -1395,8 +1356,8 @@ data class Twist3dIncrDual(val trIncr: Vector3dDual, val rotIncr: Vector3dDual) 
 data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     val inverse get() = Pose3d(rotation.inverse * -translation, rotation.inverse)
 
-    fun log(): Twist3dIncr {
-        val w = rotation.log()
+    fun ln(): Twist3dIncr {
+        val w = rotation.ln()
         val wx = Rotation3d.alg(w)
         val t = w.norm
         val t2 = t * t
@@ -1419,7 +1380,7 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     operator fun times(v: Vector3d) = this.translation + this.rotation * v
     operator fun div(b: Pose3d) = b.inverse * this
     operator fun plus(incr: Twist3dIncr) = this * exp(incr)
-    operator fun minus(b: Pose3d) = (this / b).log()
+    operator fun minus(b: Pose3d) = (this / b).ln()
 
     fun approxEq(other: Pose3d, eps: Double = GEOMETRY_COMPARE_EPS) = translation.approxEq(other.translation) && rotation.approxEq(other.rotation)
 

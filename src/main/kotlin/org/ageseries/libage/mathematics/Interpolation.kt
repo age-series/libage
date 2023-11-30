@@ -5,7 +5,6 @@ package org.ageseries.libage.mathematics
 import org.ageseries.libage.data.ClosedInterval
 import org.ageseries.libage.data.SegmentTree
 import org.ageseries.libage.data.SegmentTreeBuilder
-import org.ageseries.libage.mathematics.*
 import kotlin.math.*
 
 /**
@@ -375,7 +374,6 @@ data class ArcReparamCatenary2d(
                 return m * sinh(h / m) - dagn
             }
 
-            // Solve using Grissess-Raphson method:
             for (i in 1..maxI) {
                 val error = error()
 

@@ -5,9 +5,7 @@ import org.eln2.libelectric.TestUtils.areEqual
 import org.eln2.libelectric.TestUtils.range
 import org.eln2.libelectric.TestUtils.rangeScan
 import org.eln2.libelectric.TestUtils.rangeScanKd
-import org.junit.jupiter.api.Assertions
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import kotlin.math.*
 import kotlin.random.Random
@@ -29,6 +27,60 @@ internal class DualTest {
         assertEquals(Dual.const(10.0, 2), Dual.of(10.0, 0.0))
         assertEquals(Dual.const(10.0, 3), Dual.of(10.0, 0.0, 0.0))
         assertEquals(Dual.castFromArray(doubleArrayOf(1.0, 2.0, 3.0)), Dual.of(1.0, 2.0, 3.0))
+        assertEquals(Dual(Dual.of(1.0, 2.0), Dual.of(3.0, 4.0)), Dual.of(1.0, 2.0, 3.0, 4.0))
+        assertEquals(Dual(Dual.empty, Dual.of(3.0, 4.0)), Dual.of(3.0, 4.0))
+        assertEquals(Dual(Dual.of(1.0, 2.0), Dual.empty), Dual.of(1.0, 2.0))
+        assertEquals(Dual(Dual.empty, Dual.empty), Dual.empty)
+        assertEquals(Dual(listOf(1.0, 2.0), listOf(3.0, 4.0)), Dual.of(1.0, 2.0, 3.0, 4.0))
+    }
+
+    @Test
+    fun immutability() {
+        let {
+            val array = doubleArrayOf(1.0, 2.0, 3.0)
+            val dual = Dual.create(array)
+
+            assertTrue(dual.toList() == array.toList())
+            array[0] = 10.0
+            assertFalse(dual.toList() == array.toList())
+        }
+
+        let {
+            val array = doubleArrayOf(1.0, 2.0, 3.0)
+            val dual = Dual.castFromArray(array)
+
+            assertTrue(dual.toList() == array.toList())
+            array[0] = 10.0
+            assertTrue(dual.toList() == array.toList())
+        }
+
+        let {
+            val head = doubleArrayOf(1.0, 2.0)
+            val tail = doubleArrayOf(3.0, 4.0)
+            val dual = Dual(head, tail)
+
+            assertTrue(dual.toList() == head.toList() + tail.toList())
+            head[0] = 10.0
+            assertFalse(dual.toList() == head.toList() + tail.toList())
+            head[0] = 1.0
+            assertTrue(dual.toList() == head.toList() + tail.toList())
+            tail[0] = 30.0
+            assertFalse(dual.toList() == head.toList() + tail.toList())
+        }
+
+        let {
+            val head = mutableListOf(1.0, 2.0)
+            val tail = mutableListOf(3.0, 4.0)
+            val dual = Dual(head, tail)
+
+            assertTrue(dual.toList() == head.toList() + tail.toList())
+            head[0] = 10.0
+            assertFalse(dual.toList() == head.toList() + tail.toList())
+            head[0] = 1.0
+            assertTrue(dual.toList() == head.toList() + tail.toList())
+            tail[0] = 30.0
+            assertFalse(dual.toList() == head.toList() + tail.toList())
+        }
     }
 
     @Test
@@ -64,7 +116,7 @@ internal class DualTest {
     @Test
     fun equality() {
          assertEquals(Dual.of(1.0, 2.0, 3.0), Dual.of(1.0, 2.0, 3.0))
-         Assertions.assertNotEquals(Dual.of(1.0, 2.0, 3.0), Dual.of(2.0, 1.0, 3.0))
+         assertNotEquals(Dual.of(1.0, 2.0, 3.0), Dual.of(2.0, 1.0, 3.0))
     }
 
     @Test
@@ -93,7 +145,6 @@ internal class DualTest {
 
     @Test
     fun tanTest() {
-        // Scanning in the default 0-10 range causes numerical errors
         range(start = 0.0, end = 1.0) { x, xDual ->
             val v = tan(xDual)
 
@@ -309,7 +360,7 @@ internal class DualTest {
     fun powTest() {
         rangeScan(start = 1.0, end = 4.0, steps = 100) { power ->
             range(start = 1.0, steps = 1000) { x, xDual ->
-                val v = pow(xDual, power)
+                val v = xDual.pow(power)
 
                 areEqual(v.value, x.pow(power))
                 areEqual(v[1], power * x.pow(power - 1))
@@ -335,7 +386,7 @@ internal class DualTest {
     fun intPowTest() {
         repeat(5) { power ->
             range(start = 1.0, steps = 1000) { x, xDual ->
-                val v = pow(xDual, power)
+                val v = xDual.pow(power)
 
                 areEqual(v.value, x.pow(power))
                 areEqual(v[1], power * x.pow(power - 1))

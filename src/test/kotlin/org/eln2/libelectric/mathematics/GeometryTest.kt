@@ -98,7 +98,7 @@ internal class GeometryTest {
                 )
                 
                 assertEquals(pose, pose)
-                assertTrue(pose.approxEq(Pose2d.exp(pose.log())))
+                assertTrue(pose.approxEq(Pose2d.exp(pose.ln())))
                 assertTrue((pose.inverse * pose).approxEq(Pose2d.identity))
                 assertTrue((pose * pose.inverse).approxEq(Pose2d.identity))
             }
@@ -137,7 +137,7 @@ internal class GeometryTest {
                     Rotation3d.exp(Vector3d(rotation[0], rotation[1], rotation[2]))
                 )
 
-                val log = pose.log()
+                val log = pose.ln()
 
                 let {
                     assertEquals(pose, pose)
@@ -162,7 +162,7 @@ internal class GeometryTest {
 
         rangeScanKd(3, start = -10.0, end = 10.0, steps = 10) { r ->
             val rotation = Rotation3d.exp(Vector3d(r[0], r[1], r[2]))
-            val log = rotation.log()
+            val log = rotation.ln()
 
             let {
                 assertEquals(rotation, rotation)
@@ -171,13 +171,13 @@ internal class GeometryTest {
                 assertTrue((rotation * rotation.inverse).approxEq(Rotation3d.identity))
                 assertTrue((rotation.inverse * rotation).approxEq(Rotation3d.identity))
                 assertTrue(rotation.approxEq(Rotation3d.exp(log)))
-                assertTrue(log.approxEq(Rotation3d.exp(log).log()))
+                assertTrue(log.approxEq(Rotation3d.exp(log).ln()))
             }
 
             let {
                 val v2 = Vector3d(r[0], r[1], r[2]) * 1e-5
                 val angle = v2.norm
-                assertTrue(angle.approxEq(Rotation3d.exp(v2).log().norm))
+                assertTrue(angle.approxEq(Rotation3d.exp(v2).ln().norm))
             }
 
             let {
