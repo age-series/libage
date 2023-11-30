@@ -1,3 +1,5 @@
+@file:Suppress("PropertyName", "MemberVisibilityCanBePrivate", "ClassName")
+
 package org.ageseries.libage.sim
 
 import kotlin.math.pow
@@ -32,50 +34,54 @@ object CIE {
      * every perceptible and physically realizeable color is within [0, 1] on the chromaticity ([x], [y]) basis, where
      * [Y] is held as luminance.
      */
-    data class XYZ31(val X: Float, val Y: Float, val Z: Float) {
+    data class XYZ31(val X: Double, val Y: Double, val Z: Double) {
         /** Total of the stimulus values; unitless, but used for normalization. */
-        val total: Float = X + Y + Z
+        val total: Double get() = X + Y + Z
 
         /** Normalized x chromaticity. */
-        val x: Float
+        val x: Double
             @JvmName("getx") get() = X / total
+
         /** Normalized y chromaticity. */
-        val y: Float
+        val y: Double
             @JvmName("gety") get() = Y / total
+
         /** Normalized z chromaticity. */
-        val z: Float
+        val z: Double
             @JvmName("getz") get() = Z / total
 
         /** Convert to 1931 RGB. Up to floating point error, this conversion is exact. */
-        val asRGB31 get() = 3400850f.let { divisor ->
-            RGB31(
-                (8041697f * X - 3049000 * Y - 1591847f * Z) / divisor,
-                (-1752003f * X + 4851000f * Y + 301853 * Z) / divisor,
-                (17697f * X - 49000f * Y + 3432153f * Z) / divisor,
+        val asRGB31 : RGB31 get() {
+            val divisor = 3400850.0
+
+            return RGB31(
+                (8041697 * X - 3049000 * Y - 1591847 * Z) / divisor,
+                (-1752003 * X + 4851000 * Y + 301853 * Z) / divisor,
+                (17697 * X - 49000 * Y + 3432153 * Z) / divisor,
             )
         }
 
         /** Convert to [linear RGB](LinRGB), as an intermediate to [sRGB]. */
         val asLinRGB get() = LinRGB(
-            3.2406f * X - 1.5372f * Y - 0.4986f * Z,
-            -0.9689f * X + 1.8758f * Y + 0.0415f * Z,
-            0.0557f * X - 0.2040f * Y + 1.057f * Z,
+            3.2406 * X - 1.5372 * Y - 0.4986 * Z,
+            -0.9689 * X + 1.8758 * Y + 0.0415 * Z,
+            0.0557 * X - 0.2040 * Y + 1.057 * Z,
         )
 
         /** Convert directly to [sRGB]. This still uses [LinRGB] as an intermediate. */
         val assRGB get() = asLinRGB.assRGB
 
         /** Convert to [UVW60]. */
-        val asUVW60 get() = UVW60(
-            2f * X / 3f, Y, (-X + 3f * Y + Z) / 2f,
-        )
+        val asUVW60 get() = UVW60(2.0 * X / 3.0, Y, (-X + 3.0 * Y + Z) / 2.0)
 
         companion object {
             /**
              * Convert from chromaticity coordinates ([x], [y]) and an absolute luminance ([Y]) into an [XYZ31] object.
              */
-            fun fromxyY(x: Float, y: Float, Y: Float) = (Y/y).let { scale ->
-                XYZ31(scale * x, Y, scale * (1f - x - y))
+            fun fromxyY(x: Double, y: Double, Y: Double) : XYZ31 {
+                val scale = Y / y
+
+                return XYZ31(scale * x, Y, scale * (1.0 - x - y))
             }
         }
     }
@@ -86,25 +92,27 @@ object CIE {
      * This is merely a different basis of the space above, chosen to more closely resemble human vision tristimulus
      * values based on experimental evidence.
      */
-    data class RGB31(val R: Float, val G: Float, val B: Float) {
+    data class RGB31(val R: Double, val G: Double, val B: Double) {
         /** Total of stimulus values; unitless, but used for normalization. */
-        val total: Float = R + G + B
+        val total: Double get() = R + G + B
 
         /** Normalized red chromaticity. */
-        val r: Float
+        val r: Double
             @JvmName("getr") get() = R / total
         /** Normalized green chromaticity. */
-        val g: Float
+
+        val g: Double
             @JvmName("getg") get() = G / total
         /** Normalized blue chromaticity. */
-        val b: Float
+
+        val b: Double
             @JvmName("getb") get() = B / total
 
         /** Convert to 1931 XYZ. Up to floating point error, the conversion is exact. */
         val asXYZ31 get() = XYZ31(
-            0.49f * R + 0.31f * G + 0.2f * B,
-            0.17697f * R + 0.81240f * G + 0.01063f * B,
-            0.01f * G + 0.99f * B,
+            0.49 * R + 0.31 * G + 0.2 * B,
+            0.17697 * R + 0.81240 * G + 0.01063 * B,
+            0.01 * G + 0.99 * B,
         )
     }
 
@@ -115,30 +123,32 @@ object CIE {
      * luminance, but 1976 UCS is thought to be a better estimate today. This gamut is still useful for "coordinated
      * color temperature" calculation, though, as it is used here.
      */
-    data class UVW60(val U: Float, val V: Float, val W: Float) {
+    data class UVW60(val U: Double, val V: Double, val W: Double) {
         /** Total of stimulus values; unitless, but used for normalization. */
-        val total: Float = U + V + W
+        val total: Double get() = U + V + W
 
         /** Normalized u chromaticity. */
-        val u: Float
+        val u: Double
             @JvmName("getu") get() = U / total
         /** Normalized v chromaticity. */
-        val v: Float
+
+        val v: Double
             @JvmName("getv") get() = V / total
         /** Normalized w coordinate. This is supposed to be independent of chromaticity (thus linear in luminance), and so its normalized value isn't particularly meaningful. It is included for completeness. */
-        val w: Float
+
+        val w: Double
             @JvmName("getw") get() = W / total
 
         /** Convert to [XYZ31]. */
-        val asXYZ31 get() = XYZ31(
-            1.5f * U, V, 1.5f * U - 3f * V + 2f * W,
-        )
+        val asXYZ31 get() = XYZ31(1.5 * U, V, 1.5 * U - 3.0 * V + 2.0 * W,)
 
         companion object {
             /** Convert from chromaticity coordinates ([u], [v]) and an absolute luminance ([Y]) into a [UVW60] object. */
-            fun fromuvY(u: Float, v: Float, Y: Float) = (1f - u - v).let {w ->
-                val scale = Y/v
-                UVW60(u * scale, v * scale, w * scale)
+            fun fromuvY(u: Double, v: Double, Y: Double) : UVW60 {
+                val w = (1.0 - u - v)
+                val scale = Y / v
+
+                return UVW60(u * scale, v * scale, w * scale)
             }
         }
     }
@@ -150,11 +160,7 @@ object CIE {
  * While in direct correspondence with the other linear spaces (notably CIE 1931), this is generally unsuitable for
  * reproduction without gamma correction. Conversion to [sRGB] is often preferable.
  */
-data class LinRGB(
-    val R: Float,
-    val G: Float,
-    val B: Float,
-) {
+data class LinRGB(val R: Double, val G: Double, val B: Double) {
     /** Convert to [sRGB].*/
     val assRGB get() = sRGB(
         sRGB.transfer(R),
@@ -172,17 +178,13 @@ data class LinRGB(
  *
  * It is a safe bet that your graphics pipeline expects these values, possibly normalized into unsigned bytes.
  */
-data class sRGB(
-    val R: Float,
-    val G: Float,
-    val B: Float,
-) {
+data class sRGB(val R: Double, val G: Double, val B: Double) {
     companion object {
         /** The Electro-Optical Transfer Function (EOTF) for this gamut. */
-        fun transfer(c: Float): Float = if(c <= 0.04045f) {
-            c / 12.92f
+        fun transfer(c: Double): Double = if(c <= 0.04045) {
+            c / 12.92
         } else {
-            ((c + 0.055f) / 1.055f).pow(2.4f)
+            ((c + 0.055) / 1.055).pow(2.4)
         }
     }
 }
