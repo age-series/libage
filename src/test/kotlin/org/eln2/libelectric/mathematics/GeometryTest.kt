@@ -146,7 +146,12 @@ internal class GeometryTest {
                     assertTrue((pose * pose.inverse).approxEq(Pose3d.identity))
                 }
 
-                assertTrue(pose.approxEq(Pose3d.fromMatrix(pose())))
+                let {
+                    assertTrue(pose.approxEq(Pose3d.fromMatrix(pose())))
+                    assertTrue((pose * Vector3d.one).approxEq(pose() * Vector3d.one))
+                    assertTrue((pose() * pose.inverse()).approxEq(Matrix4x4.identity))
+                    assertTrue((!pose()).approxEq(pose.inverse()))
+                }
             }
         }
     }

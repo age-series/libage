@@ -233,6 +233,12 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
         )
     val adjugateMatrix get() = cofactorMatrix.transpose
 
+    fun approxEq(other: Matrix4x4, eps: Double = GEOMETRY_COMPARE_EPS) =
+        c0.approxEq(other.c0, eps) &&
+        c1.approxEq(other.c1, eps) &&
+        c2.approxEq(other.c2, eps) &&
+        c3.approxEq(other.c3, eps)
+
     override fun toString(): String {
         fun rowStr(row: Vector4d) = "${row.x} ${row.y} ${row.z} ${row.w}"
         return "${rowStr(r0)}\n${rowStr(r1)}\n${rowStr(r2)}\n${rowStr(r3)}"
