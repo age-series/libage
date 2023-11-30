@@ -8,16 +8,13 @@ import kotlin.math.*
 const val APPROX_COMPARE_EPS = 1e-7
 const val APPROX_COMPARE_EPS_FLOAT = 1e-5f
 const val DUAL_COMPARE_EPS = 1e-7
-const val INTEGRAL_SCAN_EPS = 1e-12
-const val EPS = 2.2e-15
-const val EPS_FLOAT = 1.2e-6f
+const val INTEGRAL_SCAN_EPS = 1e-10
+const val SYMFORCE_EPS = 2.2e-15
+const val SYMFORCE_EPS_FLOAT = 1.2e-6f
 
 inline fun lerp(from: Double, to: Double, factor: Double) = (1.0 - factor) * from + factor * to
-
 inline fun lerp(from: Float, to: Float, factor: Float) = (1f - factor) * from + factor * to
-
 inline fun lerp(from: Double, to: Double, factor: Dual) = (1.0 - factor) * from + factor * to
-
 inline fun lerp(from: Dual, to: Dual, factor: Dual) = (1.0 - factor) * from + factor * to
 
 /**
@@ -112,7 +109,6 @@ fun avg(a: Double, b: Double, c: Double, d: Double): Double = (a + b + c + d) / 
 fun avg(values: List<Double>) = values.sum() / values.size.toDouble()
 
 fun Double.mappedTo(srcMin: Double, srcMax: Double, dstMin: Double, dstMax: Double) = map(this, srcMin, srcMax, dstMin, dstMax)
-
 fun Dual.mappedTo(srcMin: Dual, srcMax: Dual, dstMin: Dual, dstMax: Dual) = map(this, srcMin, srcMax, dstMin, dstMax)
 
 fun approxEqual(a: Double, b: Double, epsilon: Double = APPROX_COMPARE_EPS): Boolean = abs(a - b) < epsilon
@@ -131,17 +127,17 @@ fun Double.rounded(decimals: Int = 3): Double {
     return round(this * multiplier) / multiplier
 }
 
-fun snzE(a: Double) = if (a >= 0.0) EPS else -EPS
 fun snz(a: Double) = if (a >= 0.0) 1.0 else -1.0
 fun nsnz(a: Double) = if (a <= 0.0) -1.0 else 1.0
 fun snzi(a: Double) = if (a >= 0.0) 1 else -1
-fun snzi(a: Int) = if (a >= 0) 1 else -1
 fun nsnzi(a: Double) = if (a <= 0.0) -1 else 1
+fun snzi(a: Int) = if (a >= 0) 1 else -1
 fun nsnzi(a: Int) = if (a <= 0) -1 else 1
-fun snzE(a: Float) = if (a >= 0f) EPS_FLOAT else -EPS_FLOAT
-fun nsnzE(a: Float) = if (a <= 0f) -EPS_FLOAT else EPS_FLOAT
-
+fun snzE(a: Double) = if (a >= 0.0) SYMFORCE_EPS else -SYMFORCE_EPS
+fun snzE(a: Float) = if (a >= 0f) SYMFORCE_EPS_FLOAT else -SYMFORCE_EPS_FLOAT
+fun nsnzE(a: Float) = if (a <= 0f) -SYMFORCE_EPS_FLOAT else SYMFORCE_EPS_FLOAT
 fun Double.nz() = this + snzE(this)
+fun Float.nz() = this + snzE(this)
 
 private const val ADAPTLOB_ALPHA = 0.816496580927726
 private const val ADAPTLOB_BETA = 0.447213595499958

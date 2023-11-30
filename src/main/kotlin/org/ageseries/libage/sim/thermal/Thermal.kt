@@ -61,7 +61,7 @@ val Quantity<Temperature>.emissionColor: CIE.XYZ31
  * temperature" according to that organization--even though the "standard pressure" changed from 101.3kPa to 100kPa in
  * 1982 . Fortunately, IUPAC has been somewhat of a _de facto_ standard as of late, though it certainly isn't the only
  * organization to have made a standard, with, e.g. NIST at 20 centigrade, ICAO at 15 centigrade, the US EPA at 25
- * centigrade, and so forth. Current best practice is to document which "stnadard" is actually adhered to, so consider
+ * centigrade, and so forth. Current best practice is to document which "standard" is actually adhered to, so consider
  * this comment to declare our adherence to IUPAC 1982 :)
  */
 val STANDARD_TEMPERATURE = Quantity(273.15, KELVIN)
@@ -91,9 +91,7 @@ class ThermalMass(
      */
     var temperature: Quantity<Temperature>
         get() = temperatureAt(energy)
-        set(value) {
-            energy = !value * mass * material.specificHeat
-        }
+        set(value) { energy = !value * mass * material.specificHeat }
 
     override fun toString() = "<Thermal Mass $material ${mass}kg ${energy}J $temperature>"
 }
