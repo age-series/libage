@@ -3,10 +3,10 @@ package org.eln2.libelectric
 import org.ageseries.libage.mathematics.Dual
 import org.ageseries.libage.mathematics.approxEq
 import org.junit.jupiter.api.Assertions
-import kotlin.math.sign
 
 internal object TestUtils {
     private const val COMPARE_EPS = 1e-6
+    private const val COMPARE_EPS_ASTRONOMIC = 10.0
 
     fun rangeScan(start: Double = 0.0, end: Double = 10.0, steps: Int = 10000, action: ((Double) -> Unit)) {
         require(start < end)
@@ -53,6 +53,13 @@ internal object TestUtils {
         }
     }
 
+    fun areEqualAstronomic(vararg reals : Double) {
+        for (i in 1 until reals.size) {
+            val a = reals[i - 1]
+            val b = reals[i]
+            Assertions.assertTrue(a.approxEq(b, COMPARE_EPS_ASTRONOMIC))
+        }
+    }
     fun areEqual(vararg duals : Dual) {
         for (i in 1 until duals.size) {
             Assertions.assertTrue(duals[i - 1].approxEq(duals[i], COMPARE_EPS))
