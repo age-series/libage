@@ -10,15 +10,9 @@ private const val GEOMETRY_NORMALIZED_EPS = 1e-6
 
 data class Matrix3x3(val c0: Vector3d, val c1: Vector3d, val c2: Vector3d) {
     constructor(
-        m00: Double,
-        m01: Double,
-        m02: Double,
-        m10: Double,
-        m11: Double,
-        m12: Double,
-        m20: Double,
-        m21: Double,
-        m22: Double,
+        m00: Double, m01: Double, m02: Double,
+        m10: Double, m11: Double, m12: Double,
+        m20: Double, m21: Double, m22: Double,
     ) : this(
         Vector3d(m00, m10, m20),
         Vector3d(m01, m11, m21),
@@ -135,7 +129,7 @@ data class Matrix3x3Dual(val c0: Vector3dDual, val c1: Vector3dDual, val c2: Vec
 
     val size get() = c0.size
     val isReal get() = size == 1
-    val value = Matrix3x3(c0.value, c1.value, c2.value)
+    val value get() = Matrix3x3(c0.value, c1.value, c2.value)
     fun head(n: Int) = Matrix3x3Dual(c0.head(n), c1.head(n), c2.head(n))
     fun tail(n: Int) = Matrix3x3Dual(c0.tail(n), c1.tail(n), c2.tail(n))
     val transpose get() = Matrix3x3Dual(r0, r1, r2)
@@ -224,8 +218,8 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
 
     fun minor(c: Int, r: Int) = eliminate(c, r).determinant
     fun cofactor(c: Int, r: Int) = minor(c, r) * (-1).pow(c + r)
-    val cofactorMatrix
-        get() = Matrix4x4(
+    val cofactorMatrix get() =
+        Matrix4x4(
             cofactor(0, 0), cofactor(1, 0), cofactor(2, 0), cofactor(3, 0),
             cofactor(0, 1), cofactor(1, 1), cofactor(2, 1), cofactor(3, 1),
             cofactor(0, 2), cofactor(1, 2), cofactor(2, 2), cofactor(3, 2),
@@ -305,7 +299,7 @@ data class Matrix4x4Dual(val c0: Vector4dDual, val c1: Vector4dDual, val c2: Vec
 
     val size get() = c0.size
     val isReal get() = size == 1
-    val value = Matrix4x4(c0.value, c1.value, c2.value, c3.value)
+    val value get() = Matrix4x4(c0.value, c1.value, c2.value, c3.value)
     fun head(n: Int) = Matrix4x4Dual(c0.head(n), c1.head(n), c2.head(n), c3.head(n))
     fun tail(n: Int) = Matrix4x4Dual(c0.tail(n), c1.tail(n), c2.tail(n), c3.tail(n))
 
@@ -511,8 +505,9 @@ data class Rotation2d(val re: Double, val im: Double) {
     override fun toString() = "θ×=${Math.toDegrees(ln())} deg"
 
     operator fun not() = this.inverse
-    operator fun times(b: Rotation2d) = Rotation2d(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re)
-    operator fun times(r2: Vector2d) = Vector2d(this.re * r2.x - this.im * r2.y, this.im * r2.x + this.re * r2.y)
+    operator fun times(other: Rotation2d) = Rotation2d(this.re * other.re - this.im * other.im, this.re * other.im + this.im * other.re)
+    operator fun times(v: Vector2d) = Vector2d(this.re * v.x - this.im * v.y, this.im * v.x + this.re * v.y)
+    operator fun times(transform: Pose2d) = Pose2d(this * transform.translation, this * transform.rotation)
     operator fun div(b: Rotation2d) = b.inverse * this
     operator fun plus(incr: Double) = this * exp(incr)
     operator fun minus(b: Rotation2d) = (this / b).ln()
@@ -1071,19 +1066,32 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 
     operator fun times(scalar: Double) = Rotation3d(x * scalar, y * scalar, z * scalar, w * scalar)
     operator fun div(scalar: Double) = Rotation3d(x / scalar, y / scalar, z / scalar, w / scalar)
+
     operator fun unaryPlus() = this
     operator fun unaryMinus() = Rotation3d(-x, -y, -z, -w)
+
     operator fun not() = this.inverse
 
-    operator fun times(b: Rotation3d) =
-        Rotation3d(
-            x * b.w + b.x * w + (y * b.z - z * b.y), // Could also use FMADD
-            y * b.w + b.y * w + (z * b.x - x * b.z),
-            z * b.w + b.z * w + (x * b.y - y * b.x),
-            w * b.w - (x * b.x + y * b.y + z * b.z)
-        )
+    operator fun plus(w: Vector3d) = this * exp(w)
+    operator fun minus(b: Rotation3d) = (this / b).ln()
+    operator fun plus(angle: Double) : Rotation3d {
+        if(this == identity) {
+            return identity
+        }
 
-    operator fun times(value: Vector3d): Vector3d {
+        val w = ln()
+        val n = w.norm
+
+        return exp((w / n) * (n + angle))
+    }
+
+    operator fun times(other: Rotation3d) = Rotation3d(
+        x * other.w + other.x * w + (y * other.z - z * other.y), // Could also use FMADD
+        y * other.w + other.y * w + (z * other.x - x * other.z),
+        z * other.w + other.z * w + (x * other.y - y * other.x),
+        w * other.w - (x * other.x + y * other.y + z * other.z)
+    )
+    operator fun times(v: Vector3d): Vector3d {
         val `2wx` = 2.0 * (w * x)
         val `2wy` = 2.0 * (w * y)
         val `2wz` = 2.0 * (w * z)
@@ -1095,15 +1103,14 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
         val `2zz` = 2.0 * (z * z)
 
         return Vector3d(
-            (value.x * (1.0 - `2yy` - `2zz`) + value.y * (`2xy` - `2wz`) + value.z * (`2xz` + `2wy`)),
-            (value.x * (`2xy` + `2wz`) + value.y * (1.0 - `2xx` - `2zz`) + value.z * (`2yz` - `2wx`)),
-            (value.x * (`2xz` - `2wy`) + value.y * (`2yz` + `2wx`) + value.z * (1.0 - `2xx` - `2yy`))
+            (v.x * (1.0 - `2yy` - `2zz`) + v.y * (`2xy` - `2wz`) + v.z * (`2xz` + `2wy`)),
+            (v.x * (`2xy` + `2wz`) + v.y * (1.0 - `2xx` - `2zz`) + v.z * (`2yz` - `2wx`)),
+            (v.x * (`2xz` - `2wy`) + v.y * (`2yz` + `2wx`) + v.z * (1.0 - `2xx` - `2yy`))
         )
     }
+    operator fun times(transform: Pose3d) = Pose3d(this * transform.translation, this * transform.rotation)
 
     operator fun div(b: Rotation3d) = b.inverse * this
-    operator fun plus(w: Vector3d) = this * exp(w)
-    operator fun minus(b: Rotation3d) = (this / b).ln()
 
     operator fun invoke() : Matrix3x3 {
         val `2xx` = 2.0 * (x * x)
@@ -1354,13 +1361,21 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     }
 
     operator fun not() = this.inverse
-    operator fun times(b: Pose3d) = Pose3d(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
-    operator fun times(v: Vector3d) = this.translation + this.rotation * v
-    operator fun div(b: Pose3d) = b.inverse * this
-    operator fun plus(incr: Twist3dIncr) = this * exp(incr)
-    operator fun minus(b: Pose3d) = (this / b).ln()
 
-    fun approxEq(other: Pose3d, eps: Double = GEOMETRY_COMPARE_EPS) = translation.approxEq(other.translation) && rotation.approxEq(other.rotation)
+    operator fun plus(incr: Twist3dIncr) = this * exp(incr)
+    operator fun plus(displacement: Vector3d) = Pose3d(translation + displacement, rotation)
+    operator fun plus(rotation: Rotation3d) = Pose3d(translation, rotation * this.rotation)
+    operator fun minus(displacement: Vector3d) = Pose3d(translation - displacement, rotation)
+    operator fun minus(rotation: Rotation3d) = Pose3d(translation, rotation.inverse / this.rotation)
+    operator fun minus(other: Pose3d) = (this / other).ln()
+    operator fun times(other: Pose3d) = Pose3d(this.translation + this.rotation * other.translation, this.rotation * other.rotation)
+    operator fun times(v: Vector3d) = this.translation + this.rotation * v
+    operator fun times(transform: Rotation3d) = this.rotation * transform
+    operator fun div(b: Pose3d) = b.inverse * this
+
+    fun approxEq(other: Pose3d, eps: Double = GEOMETRY_COMPARE_EPS) =
+        translation.approxEq(other.translation, eps) &&
+        rotation.approxEq(other.rotation, eps)
 
     operator fun invoke() : Matrix4x4 {
         val (rc0, rc1, rc2) = rotation()

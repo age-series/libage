@@ -409,6 +409,37 @@ internal class DualTest {
     }
 
     @Test
+    fun ln1pTest() {
+        range(start = 5.0, end = 10.0) { _, xDual ->
+            areEqual(ln1p(xDual), ln(1.0 + xDual))
+        }
+    }
+
+    @Test
+    fun log2Test() {
+        range(start = 5.0, end = 10.0) { x, xDual ->
+            val v = log2(xDual)
+
+            areEqual(v.value, log2(x))
+            areEqual(v[1], 1.0 / (x * LN_2))
+            areEqual(v[2], -1.0 / (x.pow(2) * LN_2))
+            areEqual(v[3], 2.0 / (x.pow(3) * LN_2))
+        }
+    }
+
+    @Test
+    fun log10Test() {
+        range(start = 5.0, end = 10.0) { x, xDual ->
+            val v = log10(xDual)
+
+            areEqual(v.value, log10(x))
+            areEqual(v[1], 1.0 / (x * LN_10))
+            areEqual(v[2], -1.0 / (x.pow(2) * LN_10))
+            areEqual(v[3], 2.0 / (x.pow(3) * LN_10))
+        }
+    }
+
+    @Test
     fun expTest() {
         range { x, xDual ->
             val v = exp(xDual)
@@ -417,6 +448,58 @@ internal class DualTest {
             areEqual(v[1], exp(x))
             areEqual(v[2], exp(x))
             areEqual(v[3], exp(x))
+        }
+    }
+
+    @Test
+    fun expm1Test() {
+        range { x, xDual ->
+            val v = expm1(xDual)
+
+            areEqual(v.value, expm1(x))
+            areEqual(v[1], exp(x))
+            areEqual(v[2], exp(x))
+            areEqual(v[3], exp(x))
+        }
+    }
+
+    @Test
+    fun logBaseTest() {
+        rangeScan(start = 1.1, end = 5.0, steps = 100) { base ->
+            val y = ln(base)
+
+            range(start = 2.0, end = 5.0, steps = 1000) { x, xDual ->
+                val v = log(xDual, base)
+
+                areEqual(v.value, log(x, base))
+                areEqual(v[1], 1.0 / (x * y))
+                areEqual(v[2], -1.0 / (x.pow(2) * y))
+                areEqual(v[3], 2.0 / (x.pow(3) * y))
+            }
+        }
+
+        range(start = 5.0, end = 10.0) { _, xDual ->
+            areEqual(ln(xDual), log(xDual, E))
+        }
+    }
+
+    @Test
+    fun expBaseTest() {
+        rangeScan(start = 1.1, end = 5.0, steps = 100) { base ->
+            val y = ln(base)
+
+            range(start = 2.0, end = 5.0, steps = 1000) { x, xDual ->
+                val v = exp(xDual, base)
+
+                areEqual(v.value, base.pow(x))
+                areEqual(v[1], base.pow(x) * y)
+                areEqual(v[2], base.pow(x) * y.pow(2))
+                areEqual(v[3], base.pow(x) * y.pow(3))
+            }
+        }
+
+        range { _, xDual ->
+            areEqual(exp(xDual), exp(xDual, E))
         }
     }
 

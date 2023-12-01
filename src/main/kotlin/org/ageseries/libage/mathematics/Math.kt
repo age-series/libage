@@ -11,12 +11,8 @@ const val DUAL_COMPARE_EPS = 1e-7
 const val INTEGRAL_SCAN_EPS = 1e-10
 const val SYMFORCE_EPS = 2.2e-15
 const val SYMFORCE_EPS_FLOAT = 1.2e-6f
-const val GOLDEN_RATIO = 1.618033988749895
-
-inline fun lerp(from: Double, to: Double, factor: Double) = (1.0 - factor) * from + factor * to
-inline fun lerp(from: Float, to: Float, factor: Float) = (1f - factor) * from + factor * to
-inline fun lerp(from: Double, to: Double, factor: Dual) = (1.0 - factor) * from + factor * to
-inline fun lerp(from: Dual, to: Dual, factor: Dual) = (1.0 - factor) * from + factor * to
+const val LN_2 = 0.6931471805599453
+const val LN_10 = 2.302585092994046
 
 /**
  * Raised to integer to the specified positive power relatively efficiently.
@@ -248,10 +244,6 @@ fun coth(x: Double) = cosh(x) / sinh(x)
 fun sech(x: Double) = 1.0 / cosh(x)
 fun csch(x: Double) = 1.0 / sinh(x)
 
-/**
- * I'm [Vector3d.cross] with Grissess. I ended up making those tests
- * */
-
 class Dual private constructor(private val values: DoubleArray) : AbstractList<Double>() {
     constructor(values: List<Double>) : this(values.toDoubleArray())
 
@@ -434,6 +426,25 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
         return values.contentEquals(other.values)
     }
 
+    fun approxEq(other: Dual, eps: Double = DUAL_COMPARE_EPS) : Boolean {
+        val size = this.size
+
+        if(size != other.size) {
+            return false
+        }
+
+        var i = 0
+        while (i < size) {
+            if(!this[i].approxEq(other[i], eps)) {
+                return false
+            }
+
+            i++
+        }
+
+        return true
+    }
+
     override fun hashCode() = values.contentHashCode()
 
     override fun toString(): String {
@@ -458,6 +469,10 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
             }
         )
 
+        /**
+         * Creates a [Dual] from the provided [values].
+         * A defensive copy of the array is created, to guarantee immutability.
+         * */
         fun create(values: DoubleArray) = Dual(values.clone())
 
         fun of(vararg values: Double) = Dual(values.asList())
@@ -514,9 +529,11 @@ fun Dual.pow(n: Double): Dual = this.function({ it.pow(n) }) { n * it.pow(n - 1.
 fun Dual.pow(n: Int): Dual = this.function({ it.pow(n) }) { n.toDouble() * it.pow(n - 1) }
 fun sqrt(x: Dual): Dual = x.function({ sqrt(it) }) { 1.0 / (2.0 * sqrt(it)) }
 fun ln(x: Dual): Dual = x.function({ ln(it) }) { 1.0 / it }
+fun ln1p(x: Dual): Dual = x.function({ ln1p(it) }) { 1.0 / (1.0 + it) }
+fun log2(x: Dual): Dual = x.function({ log2(it) }) { 1.0 / (it * LN_2)}
+fun log10(x: Dual): Dual = x.function({ log10(it) }) { 1.0 / (it * LN_10)}
 fun exp(x: Dual): Dual = x.function({ exp(it) }) { exp(it) }
-// Exercise for the reader (Grissess):
-// exponential and logarithmic function with custom base
+fun expm1(x: Dual): Dual = x.function({ expm1(it) }) { exp(it) }
 
 /**
  * Dual version of [kotlin.math.atan2]
@@ -543,21 +560,20 @@ fun atan2(y: Dual, x: Dual) : Dual {
     }
 }
 
-fun Dual.approxEq(other: Dual, eps: Double = DUAL_COMPARE_EPS) : Boolean {
-    val size = this.size
+// The argument is first and the base is second so that the methods are consistent with [kotlin.math].
 
-    if(size != other.size) {
-        return false
-    }
+fun log(x: Dual, base: Double): Dual = if(x.isReal) {
+    Dual.of(log(x.value, base))
+}
+else {
+    val y = ln(base)
+    x.function({ log(it, base) }) { 1.0 / (it * y)}
+}
 
-    var i = 0
-    while (i < size) {
-        if(!this[i].approxEq(other[i], eps)) {
-            return false
-        }
-
-        i++
-    }
-
-    return true
+fun exp(x: Dual, base: Double): Dual = if(x.isReal) {
+    Dual.of(base.pow(x.value))
+}
+else {
+    val y = ln(base)
+    x.function({ base.pow(it) }) { exp(it, base) * y }
 }

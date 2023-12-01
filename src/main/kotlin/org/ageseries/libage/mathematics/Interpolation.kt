@@ -7,6 +7,11 @@ import org.ageseries.libage.data.SegmentTree
 import org.ageseries.libage.data.SegmentTreeBuilder
 import kotlin.math.*
 
+inline fun lerp(from: Double, to: Double, factor: Double) = (1.0 - factor) * from + factor * to
+inline fun lerp(from: Float, to: Float, factor: Float) = (1f - factor) * from + factor * to
+inline fun lerp(from: Double, to: Double, factor: Dual) = (1.0 - factor) * from + factor * to
+inline fun lerp(from: Dual, to: Dual, factor: Dual) = (1.0 - factor) * from + factor * to
+
 /**
  * The grid interpolator is used to query arbitrary coordinates inside a [ArrayKDGridD], with interpolation
  * of the neighbor cells.
