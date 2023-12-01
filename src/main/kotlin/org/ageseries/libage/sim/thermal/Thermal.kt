@@ -36,17 +36,21 @@ fun Quantity<Temperature>.emissionPower(surfaceArea: Double): Double = value.pow
  * No correction for power is performed, so the result is always at maximum brightness. Any real use should consider
  * scaling brightness appropriately by [emissionPower].
  */
-val Quantity<Temperature>.emissionColor: CIE.XYZ31
-    get() = value.coerceIn(1000.0, 15000.0).toFloat().let { t ->
-        val t2 = t * t
-        CIE.UVW60.fromuvY(
-            (0.860117757f + 1.54118254e-4f * t + 1.28641212e-7f * t2) /
-                    (1f + 8.42420235e-4f * t + 7.08145163e-7f * t2),
-            (0.317398726f + 4.22806245e-5f * t + 4.20481691e-8f * t2) /
-                    (1f - 2.89741816e-5f * t + 1.61456063e-7f * t2),
-            1f,
-        ).asXYZ31
-    }
+val Quantity<Temperature>.emissionColor: CIE.XYZ31 get() {
+    val t = value.coerceIn(1000.0, 15000.0)
+    val t2 = t * t
+
+    val u1 = 0.860117757 + 1.54118254e-4 * t + 1.28641212e-7 * t2
+    val u2 = 1 + 8.42420235e-4 * t + 7.08145163e-7 * t2
+    val v1 = 0.317398726 + 4.22806245e-5 * t + 4.20481691e-8 * t2
+    val v2 = 1f - 2.89741816e-5 * t + 1.61456063e-7 * t2
+
+    return CIE.UVW60.fromuvY(
+        u1 / u2,
+        v1 / v2,
+        1.0,
+    ).asXYZ31
+}
 
 /**
  * "Standard" temperature, in Kelvin.
