@@ -1,5 +1,8 @@
 package org.eln2.libelectric.sim.thermal
 
+import org.ageseries.libage.data.KELVIN
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.thermal.*
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -8,7 +11,7 @@ import kotlin.math.abs
 
 internal class ThermalTests {
     companion object {
-        val A_BIT = Temperature(10.0)
+        val A_BIT = Quantity(10.0, KELVIN)
     }
 
     @Test
@@ -86,7 +89,7 @@ internal class ThermalTests {
 
     @Test
     fun conductivity_proportional_to_connectivity() {
-        var lastIncrease: Temperature? = null
+        var lastIncrease: Quantity<Temperature>? = null
         for(it in 1..10) {
             val sim = Simulator()
             val cen = ThermalMass(Material.IRON)
@@ -138,10 +141,10 @@ internal class ThermalTests {
         sim.connect(a, b)
         for(step in 0 until 1000) {
             sim.step(1.0)
-            assert(a.temperature.kelvin >= 0.0) { "negative energy: $a" }
-            assert(b.temperature.kelvin >= 0.0) { "negative energy: $b" }
-            println("${b.temperature.kelvin - a.temperature.kelvin},${a.temperature},${b.temperature}")
-            if(abs(a.temperature.kelvin - b.temperature.kelvin) < 1e-9) {
+            assert(!a.temperature >= 0.0) { "negative energy: $a" }
+            assert(!b.temperature >= 0.0) { "negative energy: $b" }
+            println("${!b.temperature - !a.temperature},${a.temperature},${b.temperature}")
+            if(abs(!a.temperature - !b.temperature) < 1e-9) {
                 println("equalized at $step: $a = $b")
                 return
             }
@@ -155,14 +158,14 @@ internal class ThermalTests {
         val a = ThermalMass(Material.IRON)
         val b = ThermalMass(Material.IRON)
         a.temperature = STANDARD_TEMPERATURE * 1000.0
-        b.temperature = Temperature(0.0)
+        b.temperature = Quantity(0.0, KELVIN)
         sim.connect(a, b)
         for(step in 0 until 1000) {
             sim.step(1.0)
-            assert(a.temperature.kelvin >= 0.0) { "negative energy: $a" }
-            assert(b.temperature.kelvin >= 0.0) { "negative energy: $b" }
-            println("${b.temperature.kelvin - a.temperature.kelvin},${a.temperature},${b.temperature}")
-            if(abs(a.temperature.kelvin - b.temperature.kelvin) < 1e-9) {
+            assert(!a.temperature >= 0.0) { "negative energy: $a" }
+            assert(!b.temperature >= 0.0) { "negative energy: $b" }
+            println("${!b.temperature - !a.temperature},${a.temperature},${b.temperature}")
+            if(abs(!a.temperature - !b.temperature) < 1e-9) {
                 println("equalized at $step: $a = $b")
                 return
             }

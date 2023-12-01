@@ -51,7 +51,7 @@ interface MultiMap<K, V> {
     /**
      * The set of all keys.
      */
-    val keys: Set<K> get() = keyMapping.map { (k, _) -> k }.toSet()
+    val keys: Set<K> get() = keyMapping.mapTo(mutableSetOf()) { (k, _) -> k }
 
     /**
      * The set of all sets of values.
@@ -103,8 +103,9 @@ interface MutableMultiMap<K, V> : MultiMap<K, V> {
 
     /**
      * Clear all values associated with the key [k].
+     * @return True, if any value were removed. Otherwise, false.
      */
-    fun clear(k: K)
+    fun clear(k: K) : Boolean
 
     /**
      * Remove an association between [k] and [v].
@@ -123,20 +124,18 @@ interface MutableMultiMap<K, V> : MultiMap<K, V> {
  *
  * This class is defined here using a MutableMap<K, MutableSet<V>> idiom which is compatible with the Kotlin stdlib. Other, more performant implementations exist, and can be swapped in here if needed.
  */
-class MutableSetMapMultiMap<K, V>(iter: Iterator<Pair<K, V>>) : MutableMultiMap<K, V> {
+class MutableSetMapMultiMap<K, V>(iterator: Iterator<Pair<K, V>>) : MutableMultiMap<K, V> {
     val map: MutableMap<K, MutableSet<V>> = mutableMapOf()
 
     constructor() : this(emptyList<Pair<K, V>>().iterator())
 
     init {
-        iter.forEach { (k, v) -> set(k, v) }
+        iterator.forEach { (k, v) -> set(k, v) }
     }
 
-    override operator fun get(k: K): MutableSet<V> = map.getOrPut(k, { mutableSetOf() })
+    override operator fun get(k: K): MutableSet<V> = map.getOrPut(k) { mutableSetOf() }
 
-    override fun clear(k: K) {
-        map.remove(k)
-    }
+    override fun clear(k: K) = !map.remove(k).isNullOrEmpty()
 
     override val keyMapping: Iterable<Map.Entry<K, Set<V>>> = map.entries
 
@@ -157,7 +156,7 @@ class MutableSetMapMultiMap<K, V>(iter: Iterator<Pair<K, V>>) : MutableMultiMap<
 
     /** This implementation is O(keyMappingSize). */
     override val entriesSize: Int
-        get() = map.entries.map { (_, vs) -> vs.size }.sum()
+        get() = map.entries.sumOf { (_, vs) -> vs.size }
 
     // Don't construct the set just to answer this question
     override fun contains(k: K): Boolean = map[k]?.isNotEmpty() ?: false

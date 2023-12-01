@@ -4,11 +4,20 @@ import org.ageseries.libage.debug.dprintln
 import org.ageseries.libage.sim.electrical.mna.Circuit
 
 /**
+ * Contract for an electrical resistor component.
+ * */
+interface IResistor : IPower {
+    var resistance: Double
+    val current: Double
+    val potential: Double
+}
+
+/**
  * Implements a simple, static resistor.
  *
  * The most important field is arguably [resistance]; updating this value will result in [Circuit.matrixChanged].
  */
-open class Resistor : Port(), IPower {
+open class Resistor : Port(), IResistor {
     override var name: String = "r"
     override val imageName = "resistor"
 
@@ -17,7 +26,7 @@ open class Resistor : Port(), IPower {
      *
      * Setting this will cause [Circuit.factorMatrix] to be called on the next step or substep.
      */
-    open var resistance: Double = 1.0
+    override var resistance: Double = 1.0
         set(value) {
             if(isInCircuit) {
                 // Remove our contribution to the matrix (using a negative resistance... should work)
@@ -33,7 +42,7 @@ open class Resistor : Port(), IPower {
     /**
      * Returns the current through this resistor as a function of its potential and resistance, in Amperes.
      */
-    open val current: Double
+    override val current: Double
         get() = potential / resistance
 
     /**
@@ -242,5 +251,38 @@ open class Line: Resistor() {
         }
         parts.addAll(merged)
         update()
+    }
+}
+
+/**
+ * Implements a simple SPST (Single Pole, Single Throw) switch.
+ */
+open class Switch: Resistor() {
+    override val imageName = "switch"
+
+    // You can use open or closed but open is the actual backing var here.
+    var open = true
+        set(v) {
+            field = v
+            resistance = if(v) { openResistance } else { closedResistance }
+        }
+
+    var closed: Boolean
+        get() = !open
+        set(v) {
+            open = !v
+        }
+
+    // closedResistance is when the switch is closed
+    var closedResistance = 1.0
+    // openResistance is when the switch is open
+    var openResistance = 100_000_000.0
+
+    override fun detail(): String {
+        return "[switch $name: ${potential}v, ${current}A, open: ${openResistance}Ω, closed: ${closedResistance}Ω, ${power}W]"
+    }
+
+    fun toggle() {
+        open = !open
     }
 }
