@@ -135,13 +135,13 @@ internal class QuantityTest {
 
     @Test
     fun temperature() {
-        val water_sp_bp = Quantity(1.0, GRADE)
+        val waterSpBoilingPoint = Quantity(1.0, GRADE)
         test(0.0, CELSIUS, STANDARD_TEMPERATURE)
         test(0.0, CENTIGRADE, STANDARD_TEMPERATURE)
         test(0.0, GRADE, STANDARD_TEMPERATURE)
-        test(100.0, CELSIUS, water_sp_bp)
-        test(1000.0, MILLIGRADE, water_sp_bp)
-        test(3.7315, ABSOLUTE_GRADE, water_sp_bp)
+        test(100.0, CELSIUS, waterSpBoilingPoint)
+        test(1000.0, MILLIGRADE, waterSpBoilingPoint)
+        test(3.7315, ABSOLUTE_GRADE, waterSpBoilingPoint)
         test(2.7315, ABSOLUTE_GRADE, STANDARD_TEMPERATURE)
         test(0.0, ABSOLUTE_GRADE, 0.0, KELVIN)
         test(0.01, CENTIGRADE, 0.1, MILLIGRADE)
