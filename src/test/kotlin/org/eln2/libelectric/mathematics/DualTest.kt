@@ -453,13 +453,8 @@ internal class DualTest {
 
     @Test
     fun expm1Test() {
-        range { x, xDual ->
-            val v = expm1(xDual)
-
-            areEqual(v.value, expm1(x))
-            areEqual(v[1], exp(x))
-            areEqual(v[2], exp(x))
-            areEqual(v[3], exp(x))
+        range { _, xDual ->
+            areEqual(expm1(xDual), exp(xDual) - 1.0)
         }
     }
 

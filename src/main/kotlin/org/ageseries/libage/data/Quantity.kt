@@ -69,6 +69,50 @@ value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
     fun <U2> reparam(factor: Double = 1.0) = Quantity<U2>(value * factor)
 }
 
+/** An iterator over a sequence of values of type `Quantity`. */
+abstract class QuantityIterator<Unit> : Iterator<Quantity<Unit>> {
+    final override fun next() = nextQuantity()
+
+    /** Returns the next value in the sequence without boxing. */
+    abstract fun nextQuantity() : Quantity<Unit>
+}
+
+class ArrayQuantityIterator<Unit>(private val array: QuantityArray<Unit>) : QuantityIterator<Unit>() {
+    private var index = 0
+    override fun hasNext() = index < array.size
+    override fun nextQuantity() = try { array[index++] } catch (e: ArrayIndexOutOfBoundsException) { index -= 1; throw NoSuchElementException(e.message) }
+}
+
+/**
+ * Array of quantities backed by a [DoubleArray].
+ * */
+class QuantityArray<Unit>(val backing: DoubleArray) {
+    constructor(size: Int) : this(DoubleArray(size))
+    constructor(size: Int, init: (Int) -> Quantity<Unit>) : this(DoubleArray(size) { !init(it) })
+    constructor(size: Int, value: Quantity<Unit>) : this(DoubleArray(size) { !value })
+
+    operator fun get(index: Int): Quantity<Unit> = Quantity(backing[index])
+
+    operator fun set(index: Int, value: Quantity<Unit>) { backing[index] = !value }
+
+    val size get() = backing.size
+
+    operator fun iterator() = ArrayQuantityIterator(this)
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as QuantityArray<*>
+
+        return backing.contentEquals(other.backing)
+    }
+
+    override fun hashCode(): Int {
+        return backing.contentHashCode()
+    }
+}
+
 fun <U> min(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.min(!a, !b))
 fun <U> max(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.max(!a, !b))
 fun <U> abs(q: Quantity<U>) = Quantity<U>(kotlin.math.abs(!q))

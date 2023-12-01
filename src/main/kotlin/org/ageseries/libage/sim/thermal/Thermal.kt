@@ -1,3 +1,5 @@
+@file:Suppress("MemberVisibilityCanBePrivate")
+
 package org.ageseries.libage.sim.thermal
 
 import org.ageseries.libage.data.KELVIN
@@ -61,7 +63,7 @@ val Quantity<Temperature>.emissionColor: CIE.XYZ31 get() {
  *
  * It is equal to 0 degrees Celsius.
  *
- * (A little history: since the founding of IUPAC in 1919, 0 centigrade, or 273.15 Kelvin, has been the "standard
+ * A little history: since the founding of IUPAC in 1919, 0 centigrade, or 273.15 Kelvin, has been the "standard
  * temperature" according to that organization--even though the "standard pressure" changed from 101.3kPa to 100kPa in
  * 1982 . Fortunately, IUPAC has been somewhat of a _de facto_ standard as of late, though it certainly isn't the only
  * organization to have made a standard, with, e.g. NIST at 20 centigrade, ICAO at 15 centigrade, the US EPA at 25
@@ -71,21 +73,18 @@ val Quantity<Temperature>.emissionColor: CIE.XYZ31 get() {
 val STANDARD_TEMPERATURE = Quantity(273.15, KELVIN)
 
 class ThermalMass(
-    /**
-     * The material of this mass, used for its thermal properties.
-     * */
+    /** The material of this mass, used for its thermal properties. */
     val material: Material,
-    /**
-     * Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE].
-     * */
+    /** Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE]. */
     energy: Double? = null,
-    /**
-     * Mass, in kg.
-     * */
+    /** Mass, in kg. */
     val mass: Double = 1.0,
 ) {
     var energy: Double = energy ?: (!STANDARD_TEMPERATURE * mass * material.specificHeat)
 
+    /**
+     * Gets the temperature this mass would have if [energy] were set to [e].
+     * */
     fun temperatureAt(e: Double) = Quantity(e / mass / material.specificHeat, KELVIN)
 
     /**

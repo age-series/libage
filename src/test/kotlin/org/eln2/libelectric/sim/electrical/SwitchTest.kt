@@ -1,7 +1,7 @@
 package org.eln2.libelectric.sim.electrical
 
 import org.ageseries.libage.debug.mnaPrintln
-import org.ageseries.libage.sim.electrical.component.Switch
+import org.ageseries.libage.sim.electrical.mna.component.Switch
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.junit.jupiter.api.Assertions
