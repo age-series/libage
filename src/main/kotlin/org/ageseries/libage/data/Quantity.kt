@@ -28,39 +28,46 @@ data class Scale(val factor: Double, val base: Double) {
 
 /**
  * [Scale] parameterized by [Unit], which corresponds to the physical property that the scale measures (e.g. distance, time, ...)
+ * [Unit] is separate from the [scale]; e.g. [Distance] can be expressed in [KELVIN], [GRADE], ...
  * */
 data class QuantityScale<Unit>(val scale: Scale) {
-    val base get() = scale.base
-
     val factor get() = scale.factor
 
     /**
      * Amplifies this scale [amplify] times.
+     * Example: *GRAMS * 1000* will result in *KILOGRAMS*.
      * */
     operator fun times(amplify: Double) = QuantityScale<Unit>(Scale(scale.factor / amplify, scale.base))
 
     /**
      * Reduces this scale [reduce] times.
+     * Example: *KILOGRAMS / 1000* will result in *GRAMS*.
      * */
     operator fun div(reduce: Double) = QuantityScale<Unit>(Scale(scale.factor * reduce, scale.base))
 
     /**
      * Amplifies this scale 1000 times.
+     * Example: *+GRAMS* will result in *KILOGRAMS*.
      * */
     operator fun unaryPlus() = this * 1000.0
 
     /**
      * Reduces this scale 1000 times.
+     * Example: *-KILOGRAMS* will result in *GRAMS*.
      * */
     operator fun unaryMinus() = this / 1000.0
 }
 
 /**
  * Represents a physical quantity, characterised by a [Unit] and a real number [value].
+ * [value] is **always** expressed in the base units (e.g. *Kelvin*, *Meter*, *Kilogram*, ...)
  * */
 @JvmInline
 value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
-    constructor(quantity: Double, s: QuantityScale<Unit>) : this(s.scale.unmap(quantity))
+    /**
+     * Constructs a [Quantity] with the [value] set to [quantity] mapped back from [scale].
+     * */
+    constructor(quantity: Double, scale: QuantityScale<Unit>) : this(scale.scale.unmap(quantity))
 
     val isZero get() = value == 0.0
 
@@ -68,13 +75,13 @@ value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
      * Gets the numerical value of this quantity.
      * */
     operator fun not() = value
-
     operator fun unaryMinus() = Quantity<Unit>(-value)
     operator fun unaryPlus() = Quantity<Unit>(+value)
     operator fun plus(b: Quantity<Unit>) = Quantity<Unit>(this.value + b.value)
     operator fun minus(b: Quantity<Unit>) = Quantity<Unit>(this.value - b.value)
     operator fun times(scalar: Double) = Quantity<Unit>(this.value * scalar)
     operator fun div(scalar: Double) = Quantity<Unit>(this.value / scalar)
+
     /**
      * Divides the quantity by another quantity of the same unit. This, in turn, cancels out the quantity, returning the resulting number.
      * */
@@ -90,9 +97,11 @@ value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
     operator fun rangeTo(s: QuantityScale<Unit>) = s.scale.map(value)
 
     override fun toString() = value.toString()
-
-    fun <U2> reparam(factor: Double = 1.0) = Quantity<U2>(value * factor)
 }
+
+fun <U> min(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.min(!a, !b))
+fun <U> max(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.max(!a, !b))
+fun <U> abs(q: Quantity<U>) = Quantity<U>(kotlin.math.abs(!q))
 
 /** An iterator over a sequence of values of type `Quantity`. */
 abstract class QuantityIterator<Unit> : Iterator<Quantity<Unit>> {
@@ -138,17 +147,119 @@ class QuantityArray<Unit>(val backing: DoubleArray) {
     }
 }
 
-fun <U> min(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.min(!a, !b))
-fun <U> max(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.max(!a, !b))
-fun <U> abs(q: Quantity<U>) = Quantity<U>(kotlin.math.abs(!q))
+/**
+ * Classifies the [value] into a **multiple** and expresses it based on that **multiple**.
+ * A multiplier (e.g. "kilo", "mega", ...) is chosen from [map] based on the magnitude of [value] in the said [base].
+ * The multiplier is placed in the [unit] string at the character *#* (the [unit] can also be left empty). This constitutes the **multiple**.
+ * The [value] is then adjusted based on the chosen magnitude, rounded to [decimals] and then suffixed with the **multiple**.
+ *
+ * @param value The value to classify.
+ * @param base The base to use. Usually, this is 10 or 1000.
+ * @param map A map of magnitudes to the multiplier. Not actually a [Map] because the algorithm scans the entire map to find the unit (justified because we don't care)
+ * @param unit The unit to place after the multiplier.
+ * @param decimals The number of decimals to round the final value to.
+ * @param inferFirst If true, no multiple will be prepended to the [unit], if the value is around magnitude 0.
+ * */
+fun classify(value: Double, base: Double, map: List<Pair<Double, String>>, unit: String, decimals: Int = 2, inferFirst: Boolean = true) : String {
+    if(value < 0.0) {
+        return "-${classify(-value, base, map, unit)}"
+    }
+
+    if(unit.isNotEmpty()) {
+        require(unit.count { it == '#'} == 1) {
+            "Non-empty unit $unit must have one # character"
+        }
+    }
+
+    val magnitude = log(value, base)
+
+    var (targetMagnitude, prefix) = map
+        .filter { it.first <= magnitude }
+        .maxByOrNull { it.first } ?:
+    map.minByOrNull { abs(it.first - magnitude) }!!
+
+    if(inferFirst) {
+        if(0.0 <= magnitude && abs(magnitude - targetMagnitude) > abs(magnitude)) {
+            prefix = ""
+            targetMagnitude = 0.0
+        }
+    }
+
+    val multiple = if(unit.isNotEmpty()) {
+        unit.replace("#", prefix)
+    }
+    else {
+        prefix
+    }
+
+    return "${(value / base.pow(targetMagnitude)).rounded(decimals)} $multiple"
+}
+
+enum class ClassificationBase(val value: Double, val prefixes: List<Pair<Double, String>>) {
+    Base1000Standard(
+        1000.0,
+        listOf(
+            -1.0 to "m", -2.0 to "µ", -3.0 to "n", -4.0 to "p", -5.0 to "f", -6.0 to "a", -7.0 to "z", -8.0 to "y",
+            1.0 to "k", 2.0 to "M", 3.0 to "G", 4.0 to "T", 5.0 to "P", 6.0 to "E", 7.0 to "Z", 8.0 to "Y"
+        )
+    ),
+    Base1000Long(
+        1000.0,
+        listOf(
+            -1.0 to "milli", -2.0 to "micro", -3.0 to "nano", -4.0 to "pico", -5.0 to "femto", -6.0 to "atto", -7.0 to "zepto", -8.0 to "yocto",
+            1.0 to "kilo", 2.0 to "mega", 3.0 to "giga", 4.0 to "tera", 5.0 to "peta", 6.0 to "exa", 7.0 to "zetta", 8.0 to "yotta"
+        )
+    ),
+    Base10Standard(
+        10.0,
+        listOf(
+            -1.0 to "d", -2.0 to "c", -3.0 to "m", -6.0 to "µ", -9.0 to "n", -12.0 to "p", -15.0 to "f", -18.0 to "a", -21.0 to "z", -24.0 to "y",
+            1.0 to "da", 2.0 to "h", 3.0 to "k", 6.0 to "M", 9.0 to "G", 12.0 to "T", 15.0 to "P", 18.0 to "E", 21.0 to "Z", 24.0 to "Y"
+        )
+    ),
+    Base10Long(
+        10.0,
+        listOf(
+            -1.0 to "deci", -2.0 to "centi", -3.0 to "milli", -6.0 to "micro", -9.0 to "nano", -12.0 to "pico", -15.0 to "femto", -18.0 to "atto", -21.0 to "zepto", -24.0 to "yocto",
+            1.0 to "deka", 2.0 to "hecto", 3.0 to "kilo", 6.0 to "mega", 9.0 to "giga", 12.0 to "tera", 15.0 to "peta", 18.0 to "exa", 21.0 to "zetta", 24.0 to "yotta"
+        )
+    )
+}
+
+/**
+ * Classifies this physical dimension with the [symbol] (e.g. *"#m"* for meters). The symbol *#* is where the multiple will be placed.
+ * @param factor An adjustment factor for special cases. E.G. for [KILOGRAMS], this factor is set to *1000* and the symbol is "g".
+ * @param base The base to use. This specifies the prefixes (e.g. "kilo", "mega", ...) to place in front of the [symbol] when [classify]ing.
+ * */
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class Classify(
+    val symbol: String,
+    val factor: Double = 1.0,
+    val base: ClassificationBase = ClassificationBase.Base1000Standard
+)
+
+/**
+ * Classifies this quantity into a multiple. If [T] is annotated with [Classify], the symbol and base specified in the annotation will be used.
+ * Otherwise, the base [ClassificationBase.Base1000Standard] will be used and no unit symbol will be added.
+ * */
+inline fun<reified T> Quantity<T>.classify() : String {
+    val annotation = T::class.java.getDeclaredAnnotation(Classify::class.java)
+
+    return if(annotation == null) {
+        classify(!this, ClassificationBase.Base1000Standard.value, ClassificationBase.Base1000Standard.prefixes, "")
+    }
+    else {
+        classify(!this * annotation.factor, annotation.base.value, annotation.base.prefixes, annotation.symbol)
+    }
+}
 
 /**
  * Defines the standard scale of the [Unit] (a scale with factor 1).
  * */
 fun <Unit> standardScale(factor: Double = 1.0) = QuantityScale<Unit>(Scale(factor, 0.0))
 
-
-interface Mass
+@Classify("#g", factor = 1000.0) interface Mass
 val KILOGRAMS = standardScale<Mass>()
 val GRAMS = -KILOGRAMS
 val MILLIGRAMS = -GRAMS
@@ -156,7 +267,7 @@ val kg by ::KILOGRAMS
 val g by ::GRAMS
 val mg by ::MILLIGRAMS
 
-interface Time
+@Classify("#s") interface Time
 val SECOND = standardScale<Time>()
 val MILLISECONDS = -SECOND
 val MICROSECONDS = -MILLISECONDS
@@ -167,8 +278,7 @@ val DAYS = HOURS * 24.0
 val s by ::SECOND
 val ms by ::MILLISECONDS
 
-@Classify("m")
-interface Distance
+@Classify("#m") interface Distance
 val METER = standardScale<Distance>()
 val CENTIMETERS = METER / 100.0
 val MILLIMETERS = -METER
@@ -176,7 +286,7 @@ val m by ::METER
 val cm by ::CENTIMETERS
 val mm by ::MILLIMETERS
 
-interface Energy
+@Classify("#J") interface Energy
 val JOULE = standardScale<Energy>()
 val MILLIJOULE = -JOULE
 val MICROJOULE = -MILLIJOULE
@@ -211,7 +321,7 @@ val MeV by ::MEGA_ELECTRON_VOLT
 val GeV by ::GIGA_ELECTRON_VOLT
 val TeV by ::TERA_ELECTRON_VOLT
 
-interface Power
+@Classify("#W") interface Power
 val WATT = standardScale<Power>()
 val MILLIWATT = -WATT
 val KILOWATT = +WATT
@@ -222,27 +332,27 @@ val kW by ::KILOWATT
 val MW by ::MEGAWATT
 val GW by ::GIGAWATT
 
-interface Potential
+@Classify("#V") interface Potential
 val VOLT = standardScale<Potential>()
 val KILOVOLT = +VOLT
 val MILLIVOLT = -VOLT
 val V by ::VOLT
 val KV by ::KILOVOLT
 
-interface Current
+@Classify("#A") interface Current
 val AMPERE = standardScale<Current>()
 val MILLIAMPERE = -AMPERE
 val A by ::AMPERE
 val mA by ::MILLIAMPERE
 
-interface Resistance
+@Classify("#Ω") interface Resistance
 val OHM = standardScale<Resistance>()
 val KILOOHM = +OHM
 val MEGAOHM = +KILOOHM
 val GIGAOHM = +MEGAOHM
 val MILLIOHM = -OHM
 
-interface Radioactivity
+@Classify("#Bq") interface Radioactivity
 val BECQUEREL = standardScale<Radioactivity>()
 val KILOBECQUERELS = BECQUEREL * 1e3
 val MEGABECQUERELS = BECQUEREL * 1e6
@@ -266,14 +376,14 @@ val mCi by ::MILLICURIES
 val uCi by ::MICROCURIES
 val nCi by ::NANOCURIES
 
-interface RadiationAbsorbedDose
+@Classify("#Gy") interface RadiationAbsorbedDose
 val GRAY = standardScale<RadiationAbsorbedDose>()
 val MILLIGRAY = -GRAY
 val RAD = GRAY / 100.0
 val Gy by ::GRAY
 val mGy by ::MILLIGRAY
 
-interface RadiationDoseEquivalent
+@Classify("#Sv") interface RadiationDoseEquivalent
 val SIEVERT = standardScale<RadiationDoseEquivalent>()
 val MILLISIEVERTS = -SIEVERT
 val MICROSIEVERTS = -MILLISIEVERTS
@@ -286,6 +396,7 @@ val mSv by ::MILLISIEVERTS
 val uSv by ::MICROSIEVERTS
 val nSv by ::NANOSIEVERTS
 
+@Classify("#R", 3875.96899225)
 interface RadiationExposure
 val COULOMB_PER_KG = standardScale<RadiationExposure>()
 val ROENTGEN = COULOMB_PER_KG / 3875.96899225
@@ -297,7 +408,7 @@ val mR by ::MILLIROENTGEN
 val uR by ::MICROROENTGEN
 val nR by ::NANOROENTGEN
 
-interface ReciprocalDistance
+@Classify("#1/m") interface ReciprocalDistance
 val RECIP_METER = standardScale<ReciprocalDistance>()
 val RECIP_CENTIMETERS = RECIP_METER * 100.0
 
@@ -305,7 +416,7 @@ interface ArealDensity
 val KG_PER_M2 = standardScale<ArealDensity>()
 val G_PER_CM2 = KG_PER_M2 * 10.0
 
-interface Density
+@Classify("#g/m³", factor = 1000.0) interface Density
 val KG_PER_M3 = standardScale<Density>()
 val G_PER_CM3 = KG_PER_M3 * 1000.0
 val G_PER_L = KG_PER_M3
@@ -314,27 +425,28 @@ interface ReciprocalArealDensity
 val M2_PER_KG = standardScale<ReciprocalArealDensity>()
 val CM2_PER_G = M2_PER_KG / 10.0
 
-interface Velocity
+@Classify("#m/s") interface Velocity
 val M_PER_S = standardScale<Velocity>()
 val KM_PER_S = +M_PER_S
 
-interface Substance
+@Classify("#mol") interface Substance
 val MOLE = standardScale<Substance>()
 
 interface MolarConcentration
 val MOLE_PER_M3 = standardScale<MolarConcentration>()
 
+@Classify("#m²")
 interface Area
 val M2 = standardScale<Area>()
 
-interface Volume
+@Classify("#m³") interface Volume
 val M3 = standardScale<Volume>()
 val LITERS = M3 / 1000.0
 val MILLILITERS = -LITERS
 val L by ::LITERS
 val mL by ::MILLILITERS
 
-interface Temperature
+@Classify("#K") interface Temperature
 val KELVIN = standardScale<Temperature>()
 val RANKINE = KELVIN * 0.555556
 val CELSIUS = QuantityScale<Temperature>(Scale(1.0, -273.15))
@@ -348,7 +460,7 @@ val J_PER_KG_K = standardScale<SpecificHeatCapacity>()
 val J_PER_G_K = +J_PER_KG_K
 val KJ_PER_KG_K = +J_PER_KG_K
 
-interface HeatCapacity
+@Classify("#J/K") interface HeatCapacity
 val J_PER_K = standardScale<HeatCapacity>()
 
 interface ThermalConductivity
@@ -359,69 +471,13 @@ interface MolecularWeight
 val KG_PER_MOLE = standardScale<MolecularWeight>()
 val G_PER_MOLE = -KG_PER_MOLE
 
-interface Pressure
+@Classify("#Pa") interface Pressure
 val PASCAL = standardScale<Pressure>()
 val ATMOSPHERES = PASCAL * 9.86923e-6
 val Pa by ::PASCAL
 val Atm by ::ATMOSPHERES
 
+@Classify("#W/m²")
 interface Intensity
 val WATT_PER_M2 = standardScale<Intensity>()
 val KILOWATT_PER_M2 = +WATT_PER_M2
-
-val BASE_1000_PREFIXES = listOf(
-    -1.0 to "m", -2.0 to "µ", -3.0 to "n", -4.0 to "p", -5.0 to "f", -6.0 to "a", -7.0 to "z", -8.0 to "y",
-    1.0 to "k", 2.0 to "M", 3.0 to "G", 4.0 to "T", 5.0 to "P", 6.0 to "E", 7.0 to "Z", 8.0 to "Y"
-)
-
-val BASE_1000_PREFIXES_LONG = listOf(
-    -1.0 to "milli", -2.0 to "micro", -3.0 to "nano", -4.0 to "pico", -5.0 to "femto", -6.0 to "atto", -7.0 to "zepto", -8.0 to "yocto",
-    1.0 to "kilo", 2.0 to "mega", 3.0 to "giga", 4.0 to "tera", 5.0 to "peta", 6.0 to "exa", 7.0 to "zetta", 8.0 to "yotta"
-)
-
-val BASE_10_PREFIXES = listOf(
-    -1.0 to "d", -2.0 to "c", -3.0 to "m", -6.0 to "µ", -9.0 to "n", -12.0 to "p", -15.0 to "f", -18.0 to "a", -21.0 to "z", -24.0 to "y",
-    1.0 to "da", 2.0 to "h", 3.0 to "k", 6.0 to "M", 9.0 to "G", 12.0 to "T", 15.0 to "P", 18.0 to "E", 21.0 to "Z", 24.0 to "Y"
-)
-
-val BASE_10_PREFIXES_LONG = listOf(
-    -1.0 to "deci", -2.0 to "centi", -3.0 to "milli", -6.0 to "micro", -9.0 to "nano", -12.0 to "pico", -15.0 to "femto", -18.0 to "atto", -21.0 to "zepto", -24.0 to "yocto",
-    1.0 to "deka", 2.0 to "hecto", 3.0 to "kilo", 6.0 to "mega", 9.0 to "giga", 12.0 to "tera", 15.0 to "peta", 18.0 to "exa", 21.0 to "zetta", 24.0 to "yotta"
-)
-
-fun classify(value: Double, base: Double, map: List<Pair<Double, String>>, unit: String, decimals: Int = 2, inferFirst: Boolean = true) : String {
-    if(value < 0.0) {
-        return "-${classify(-value, base, map, unit)}"
-    }
-
-    val magnitude = log(value, base)
-
-    var (targetMagnitude, prefix) = map
-        .filter { it.first <= magnitude }
-        .maxByOrNull { it.first } ?:
-        map.minByOrNull { abs(it.first - magnitude) }!!
-
-    if(inferFirst) {
-        if(0.0 <= magnitude && abs(magnitude - targetMagnitude) > abs(magnitude)) {
-            prefix = ""
-            targetMagnitude = 0.0
-        }
-    }
-
-    return "${(value / base.pow(targetMagnitude)).rounded(decimals)} $prefix$unit"
-}
-
-@Target(AnnotationTarget.CLASS)
-@Retention(AnnotationRetention.RUNTIME)
-annotation class Classify(val symbol: String)
-
-inline fun<reified T> Quantity<T>.classify() : String {
-    val annotation = T::class.java.getDeclaredAnnotation(Classify::class.java)
-
-    return if(annotation == null) {
-        classify(!this, 1000.0, BASE_1000_PREFIXES, "")
-    }
-    else {
-        classify(!this, 1000.0, BASE_1000_PREFIXES, annotation.symbol)
-    }
-}
