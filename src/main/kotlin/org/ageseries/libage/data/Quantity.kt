@@ -340,6 +340,8 @@ val RANKINE = KELVIN * 0.555556
 val CELSIUS = QuantityScale<Temperature>(Scale(1.0, -273.15))
 val CENTIGRADE by ::CELSIUS
 val MILLIGRADE = QuantityScale<Temperature>(Scale(10.0, -2731.5))
+val GRADE = QuantityScale<Temperature>(Scale(0.01, -2.7315))
+val ABSOLUTE_GRADE = QuantityScale<Temperature>(Scale(0.01, 0.0))
 
 interface SpecificHeatCapacity
 val J_PER_KG_K = standardScale<SpecificHeatCapacity>()
