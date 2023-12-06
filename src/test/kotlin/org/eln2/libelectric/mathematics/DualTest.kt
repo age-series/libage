@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import kotlin.math.*
 import kotlin.random.Random
+import kotlin.time.times
 
 internal class DualTest {
     private val random = Random(3141)
@@ -32,6 +33,14 @@ internal class DualTest {
         assertEquals(Dual(Dual.of(1.0, 2.0), Dual.empty), Dual.of(1.0, 2.0))
         assertEquals(Dual(Dual.empty, Dual.empty), Dual.empty)
         assertEquals(Dual(listOf(1.0, 2.0), listOf(3.0, 4.0)), Dual.of(1.0, 2.0, 3.0, 4.0))
+    }
+
+    @Test
+    fun unary() {
+        range { _, xDual ->
+            areEqual(xDual, +xDual, (1.0) * xDual, xDual * (1.0), Dual.const(1.0, xDual.size) * xDual)
+            areEqual(-xDual, (-1.0) * xDual, xDual * (-1.0), Dual.const(-1.0, xDual.size) * xDual)
+        }
     }
 
     @Test

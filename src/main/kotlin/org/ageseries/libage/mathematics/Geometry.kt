@@ -5,7 +5,7 @@ package org.ageseries.libage.mathematics
 import java.util.ArrayList
 import kotlin.math.*
 
-private const val GEOMETRY_COMPARE_EPS = 1e-8
+private const val GEOMETRY_COMPARE_EPS = 1e-7
 private const val GEOMETRY_NORMALIZED_EPS = 1e-6
 
 data class Matrix3x3(val c0: Vector3d, val c1: Vector3d, val c2: Vector3d) {
@@ -185,14 +185,11 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
     val normFrobeniusSqr get() = c0.normSqr + c1.normSqr + c2.normSqr + c3.normSqr
     val normFrobenius get() = sqrt(normFrobeniusSqr)
 
-    // Inlined for performance. We're already down a deep rabbit hole of performance issues
-    // because of our design (and ⅅ), so at least let me have this one.
-    val determinant
-        get() =
-            Matrix3x3(c1.y, c2.y, c3.y, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.x -
-            Matrix3x3(c1.x, c2.x, c3.x, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.y +
-            Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.w, c2.w, c3.w).determinant * c0.z -
-            Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.z, c2.z, c3.z).determinant * c0.w
+    val determinant get() =
+        Matrix3x3(c1.y, c2.y, c3.y, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.x -
+        Matrix3x3(c1.x, c2.x, c3.x, c1.z, c2.z, c3.z, c1.w, c2.w, c3.w).determinant * c0.y +
+        Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.w, c2.w, c3.w).determinant * c0.z -
+        Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.z, c2.z, c3.z).determinant * c0.w
 
     fun eliminate(eliminateC: Int, eliminateR: Int): Matrix3x3 {
         val values = DoubleArray(3 * 3)
@@ -218,6 +215,7 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
 
     fun minor(c: Int, r: Int) = eliminate(c, r).determinant
     fun cofactor(c: Int, r: Int) = minor(c, r) * (-1).pow(c + r)
+
     val cofactorMatrix get() =
         Matrix4x4(
             cofactor(0, 0), cofactor(1, 0), cofactor(2, 0), cofactor(3, 0),
@@ -225,6 +223,7 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
             cofactor(0, 2), cofactor(1, 2), cofactor(2, 2), cofactor(3, 2),
             cofactor(0, 3), cofactor(1, 3), cofactor(2, 3), cofactor(3, 3)
         )
+
     val adjugateMatrix get() = cofactorMatrix.transpose
 
     fun approxEq(other: Matrix4x4, eps: Double = GEOMETRY_COMPARE_EPS) =
