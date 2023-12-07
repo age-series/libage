@@ -242,7 +242,18 @@ fun coth(x: Double) = cosh(x) / sinh(x)
 fun sech(x: Double) = 1.0 / cosh(x)
 fun csch(x: Double) = 1.0 / sinh(x)
 
+@Target(AnnotationTarget.FUNCTION)
+@RequiresOptIn(level = RequiresOptIn.Level.ERROR)
+annotation class UnsafeDualAPI
+
 class Dual private constructor(private val values: DoubleArray) : AbstractList<Double>() {
+    /**
+     * Constructs a [Dual] from the single [value].
+     * */
+    constructor(value: Double) : this(DoubleArray(1).also {
+        it[0] = value
+    })
+
     /**
      * Constructs a [Dual] from the [values], by copying the [values] into a *new* [DoubleArray].
      * */
@@ -358,44 +369,32 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
      * */
     fun tail(n: Int = 1) = Dual(DoubleArray(size - n) { values[it + n] })
 
-    operator fun unaryPlus(): Dual = this
+    /**
+     * Applies the [operation] component-wise on the values in this dual and the other dual.
+     * The resulting dual respects the **truncation rule**.
+     * */
+    private inline fun componentWise(other: Dual, operation: (Double, Double) -> Double) : Dual {
+        val a = this.values
+        val b = other.values
 
-    operator fun unaryMinus(): Dual {
-        val size = this.size
+        val size = min(a.size, b.size)
+        require(size >= 0)
+
         val array = DoubleArray(size)
 
         var i = 0
-        while (i < size) {
-            array[i] = -values[i]
+        while(i < size) {
+            array[i] = operation(a[i], b[i])
             i++
         }
 
-        return castFromArray(array)
+        return Dual(array)
     }
-
-    operator fun plus(other: Dual): Dual =
-        if (this.isReal || other.isReal) const(this[0] + other[0])
-        else Dual(this.value + other.value, this.tail() + other.tail())
-
-    operator fun minus(other: Dual): Dual =
-        if (this.isReal || other.isReal) const(this[0] - other[0])
-        else Dual(this.value - other.value, this.tail() - other.tail())
-
-    operator fun times(other: Dual): Dual =
-        if (this.isReal || other.isReal) const(this[0] * other[0])
-        else Dual(this.value * other.value, this.tail() * other.head() + this.head() * other.tail())
-
-    operator fun div(other: Dual): Dual =
-        if (this.isReal || other.isReal) const(this[0] / other[0])
-        else Dual(this.value / other.value, (this.tail() * other - this * other.tail()) / (other * other))
-
-    inline fun function(x: ((Double) -> Double), dx: ((Dual) -> Dual)): Dual =
-        if (this.isReal) const(x(this.value))
-        else Dual(x(this.value), dx(this.head()) * this.tail())
 
     /**
      * Maps the [value] using [transform] and leaves the rest of the dual untouched.
      * */
+    @OptIn(UnsafeDualAPI::class)
     inline fun mapValue(transform: (Double) -> Double) : Dual {
         val values = bind()
 
@@ -403,49 +402,73 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
             values[0] = transform(values[0])
         }
 
-        return castFromArray(values)
+        return wrapUnsafe(values)
     }
 
     /**
      * Maps the [value] using [transformValue] and the rest of the dual using [transformTail].
      * */
+    @OptIn(UnsafeDualAPI::class)
     inline fun mapValueAndTail(transformValue: (Double) -> Double, transformTail: (Double) -> Double) : Dual {
-        val values = bind()
-        val size = values.size
+        val source = unwrapUnsafe(this)
+        val size = source.size
+        val values = DoubleArray(size)
 
         if(size > 0) {
-            values[0] = transformValue(values[0])
+            values[0] = transformValue(source[0])
 
             var i = 1
             while (i < size) {
-                values[i] = transformTail(values[i])
+                values[i] = transformTail(source[i])
                 i++
             }
         }
 
-        return castFromArray(values)
+        return wrapUnsafe(values)
     }
 
     /**
      * Maps all the values using the [transform].
      * */
+    @OptIn(UnsafeDualAPI::class)
     inline fun map(transform: (Double) -> Double) : Dual {
-        val values = bind()
-        val size = values.size
+        val source = unwrapUnsafe(this)
+        val size = source.size
+        val values = DoubleArray(size)
 
         var i = 0
         while(i < size) {
-            values[i] = transform(values[i])
+            values[i] = transform(source[i])
             i++
         }
 
-        return castFromArray(values)
+        return wrapUnsafe(values)
     }
+
+    operator fun unaryPlus(): Dual = this
+
+    operator fun unaryMinus(): Dual = map { -it }
+
+    operator fun plus(other: Dual): Dual = componentWise(other) { a, b -> a + b }
+
+    operator fun minus(other: Dual): Dual = componentWise(other) { a, b -> a - b }
+
+    operator fun times(other: Dual): Dual =
+        if (this.isReal || other.isReal) Dual(this.value * other.value)
+        else Dual(this.value * other.value, this.tail() * other.head() + this.head() * other.tail())
+
+    operator fun div(other: Dual): Dual =
+        if (this.isReal || other.isReal) Dual(this.value / other.value)
+        else Dual(this.value / other.value, (this.tail() * other - this * other.tail()) / (other * other))
+
+    inline fun function(x: (Double) -> Double, dx: (Dual) -> Dual): Dual =
+        if (this.isReal) Dual(x(this.value))
+        else Dual(x(this.value), dx(this.head()) * this.tail())
 
     operator fun plus(const: Double) = mapValue { it + const }
     operator fun minus(const: Double) = mapValue { it - const }
-    operator fun times(constant: Double) = if(constant == 1.0) this else map { v -> v * constant }
-    operator fun div(constant: Double) = if(constant == 1.0) this else map { v -> v / constant }
+    operator fun times(constant: Double) = if(constant == 1.0) this else map { it * constant }
+    operator fun div(constant: Double) = if(constant == 1.0) this else map { it / constant }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) {
@@ -497,8 +520,15 @@ class Dual private constructor(private val values: DoubleArray) : AbstractList<D
          * Constructs a [Dual] referencing the [array] without a defensive copy.
          * Only appropriate to use when [array] is guaranteed to not be mutated after the resulting [Dual] is in use.
          * */
-        @Internal
-        fun castFromArray(array: DoubleArray) = Dual(array)
+        @UnsafeDualAPI
+        fun wrapUnsafe(array: DoubleArray): Dual = Dual(array)
+
+        /**
+         * Gets a reference to the underlying storage.
+         * Only appropriate to use when the resulting array will not be mutated.
+         * */
+        @UnsafeDualAPI
+        fun unwrapUnsafe(dual: Dual): DoubleArray = dual.values
 
         fun const(x: Double, n: Int = 1): Dual {
             val array = DoubleArray(n)

@@ -94,13 +94,20 @@ tasks {
 // By default, build everything, put it somewhere convenient, and run the tests.
 defaultTasks = mutableListOf("build", "test")
 
+val compileArgs = listOf(
+    "-Xopt-in=kotlin.RequiresOptIn"
+)
+
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
     jvmTarget = "17"
+    freeCompilerArgs += compileArgs
 }
+
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
     jvmTarget = "17"
+    freeCompilerArgs += compileArgs
 }
 
 java {
