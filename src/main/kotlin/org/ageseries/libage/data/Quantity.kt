@@ -72,9 +72,10 @@ value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
     val isZero get() = value == 0.0
 
     /**
-     * Gets the numerical value of this quantity.
+     * Gets the [value] of this quantity.
      * */
-    operator fun not() = value
+    @Suppress("NOTHING_TO_INLINE")
+    inline operator fun not() = value // Pretty sure it gets inlined but let's make sure
     operator fun unaryMinus() = Quantity<Unit>(-value)
     operator fun unaryPlus() = Quantity<Unit>(+value)
     operator fun plus(b: Quantity<Unit>) = Quantity<Unit>(this.value + b.value)
@@ -228,7 +229,7 @@ enum class ClassificationBase(val value: Double, val prefixes: List<Pair<Double,
 
 /**
  * Classifies this physical dimension with the [symbol] (e.g. *"#m"* for meters). The symbol *#* is where the multiple will be placed.
- * @param factor An adjustment factor for special cases. E.G. for [KILOGRAMS], this factor is set to *1000* and the symbol is "g".
+ * @param factor An adjustment factor for special cases. E.G. for [KILOGRAM], this factor is set to *1000* and the symbol is "g".
  * @param base The base to use. This specifies the prefixes (e.g. "kilo", "mega", ...) to place in front of the [symbol] when [classify]ing.
  * */
 @Target(AnnotationTarget.CLASS)
@@ -260,31 +261,39 @@ inline fun<reified T> Quantity<T>.classify() : String {
 fun <Unit> standardScale(factor: Double = 1.0) = QuantityScale<Unit>(Scale(factor, 0.0))
 
 @Classify("#g", factor = 1000.0) interface Mass
-val KILOGRAMS = standardScale<Mass>()
-val GRAMS = -KILOGRAMS
-val MILLIGRAMS = -GRAMS
-val kg by ::KILOGRAMS
-val g by ::GRAMS
-val mg by ::MILLIGRAMS
+val KILOGRAM = standardScale<Mass>()
+val GRAM = -KILOGRAM
+val MILLIGRAM = -GRAM
+val kg by ::KILOGRAM
+val g by ::GRAM
+val mg by ::MILLIGRAM
+
+@Classify("#Da")
+interface AtomicMass
+val DALTON = standardScale<AtomicMass>()
+val Da by ::DALTON
+
+fun Quantity<AtomicMass>.asStandardMass() = Quantity(!this * 1.66053906660e-27, KILOGRAM)
 
 @Classify("#s") interface Time
 val SECOND = standardScale<Time>()
-val MILLISECONDS = -SECOND
-val MICROSECONDS = -MILLISECONDS
-val NANOSECONDS = -MICROSECONDS
-val MINUTES = SECOND * 60.0
-val HOURS = MINUTES * 60.0
-val DAYS = HOURS * 24.0
+val MILLISECOND = -SECOND
+val MICROSECOND = -MILLISECOND
+val NANOSECOND = -MICROSECOND
+val MINUTE = SECOND * 60.0
+val HOUR = MINUTE * 60.0
+val DAY = HOUR * 24.0
 val s by ::SECOND
-val ms by ::MILLISECONDS
+val ms by ::MILLISECOND
 
 @Classify("#m") interface Distance
 val METER = standardScale<Distance>()
-val CENTIMETERS = METER / 100.0
-val MILLIMETERS = -METER
+val CENTIMETER = METER / 100.0
+val MILLIMETER = -METER
+val ANGSTROM = METER * 1e-10
 val m by ::METER
-val cm by ::CENTIMETERS
-val mm by ::MILLIMETERS
+val cm by ::CENTIMETER
+val mm by ::MILLIMETER
 
 @Classify("#J") interface Energy
 val JOULE = standardScale<Energy>()
@@ -292,23 +301,23 @@ val MILLIJOULE = -JOULE
 val MICROJOULE = -MILLIJOULE
 val NANOJOULE = -MICROJOULE
 val ERG = JOULE * 1e-7
-val KILOJOULES = +JOULE
-val MEGAJOULES = +KILOJOULES
-val GIGAJOULES = +MEGAJOULES
-val WATT_SECONDS = QuantityScale<Energy>(Scale(JOULE.factor, 0.0))
-val WATT_MINUTES = WATT_SECONDS * 60.0
-val WATT_HOURS = WATT_MINUTES * 60.0
-val KILOWATT_HOURS = WATT_HOURS * 1000.0
-val MEGAWATT_HOURS = KILOWATT_HOURS * 1000.0
+val KILOJOULE = +JOULE
+val MEGAJOULE = +KILOJOULE
+val GIGAJOULE = +MEGAJOULE
+val WATT_SECOND = QuantityScale<Energy>(Scale(JOULE.factor, 0.0))
+val WATT_MINUTE = WATT_SECOND * 60.0
+val WATT_HOUR = WATT_MINUTE * 60.0
+val KILOWATT_HOUR = WATT_HOUR * 1000.0
+val MEGAWATT_HOUR = KILOWATT_HOUR * 1000.0
 val J by ::JOULE
-val kJ by ::KILOJOULES
-val MJ by ::MEGAJOULES
-val GJ by ::GIGAJOULES
-val Ws by ::WATT_SECONDS
-val Wmin by ::WATT_MINUTES
-val Wh by ::WATT_HOURS
-val kWh by ::KILOWATT_HOURS
-val MWh by ::MEGAWATT_HOURS
+val kJ by ::KILOJOULE
+val MJ by ::MEGAJOULE
+val GJ by ::GIGAJOULE
+val Ws by ::WATT_SECOND
+val Wmin by ::WATT_MINUTE
+val Wh by ::WATT_HOUR
+val kWh by ::KILOWATT_HOUR
+val MWh by ::MEGAWATT_HOUR
 // Serious precision issues? Hope not! :Fish_Smug:
 val ELECTRON_VOLT = JOULE * 1.602176634e-19
 val KILO_ELECTRON_VOLT = JOULE * 1.602176634e-16
@@ -398,8 +407,8 @@ val nSv by ::NANOSIEVERTS
 
 @Classify("#R", 3875.96899225)
 interface RadiationExposure
-val COULOMB_PER_KG = standardScale<RadiationExposure>()
-val ROENTGEN = COULOMB_PER_KG / 3875.96899225
+val COULOMB_PER_KILOGRAM = standardScale<RadiationExposure>()
+val ROENTGEN = COULOMB_PER_KILOGRAM / 3875.96899225
 val MILLIROENTGEN = -ROENTGEN
 val MICROROENTGEN = -MILLIROENTGEN
 val NANOROENTGEN = -MICROROENTGEN
@@ -410,38 +419,38 @@ val nR by ::NANOROENTGEN
 
 @Classify("#1/m") interface ReciprocalDistance
 val RECIP_METER = standardScale<ReciprocalDistance>()
-val RECIP_CENTIMETERS = RECIP_METER * 100.0
+val RECIP_CENTIMETER = RECIP_METER * 100.0
 
 interface ArealDensity
-val KG_PER_M2 = standardScale<ArealDensity>()
-val G_PER_CM2 = KG_PER_M2 * 10.0
+val KILOGRAM_PER_METER2 = standardScale<ArealDensity>()
+val GRAM_PER_CENTIMETER2 = KILOGRAM_PER_METER2 * 10.0
 
 @Classify("#g/m³", factor = 1000.0) interface Density
-val KG_PER_M3 = standardScale<Density>()
-val G_PER_CM3 = KG_PER_M3 * 1000.0
-val G_PER_L = KG_PER_M3
+val KILOGRAM_PER_METER3 = standardScale<Density>()
+val G_PER_CM3 = KILOGRAM_PER_METER3 * 1000.0
+val G_PER_L = KILOGRAM_PER_METER3
 
 interface ReciprocalArealDensity
-val M2_PER_KG = standardScale<ReciprocalArealDensity>()
-val CM2_PER_G = M2_PER_KG / 10.0
+val METER2_PER_KILOGRAM = standardScale<ReciprocalArealDensity>()
+val CENTIMETER2_PER_GRAM = METER2_PER_KILOGRAM / 10.0
 
 @Classify("#m/s") interface Velocity
-val M_PER_S = standardScale<Velocity>()
-val KM_PER_S = +M_PER_S
+val METER_PER_SECOND = standardScale<Velocity>()
+val KILOMETER_PER_SECOND = +METER_PER_SECOND
 
 @Classify("#mol") interface Substance
 val MOLE = standardScale<Substance>()
 
 interface MolarConcentration
-val MOLE_PER_M3 = standardScale<MolarConcentration>()
+val MOLE_PER_METER3 = standardScale<MolarConcentration>()
 
 @Classify("#m²")
 interface Area
-val M2 = standardScale<Area>()
+val METER2 = standardScale<Area>()
 
 @Classify("#m³") interface Volume
-val M3 = standardScale<Volume>()
-val LITERS = M3 / 1000.0
+val METER3 = standardScale<Volume>()
+val LITERS = METER3 / 1000.0
 val MILLILITERS = -LITERS
 val L by ::LITERS
 val mL by ::MILLILITERS
@@ -455,21 +464,28 @@ val MILLIGRADE = QuantityScale<Temperature>(Scale(10.0, -2731.5))
 val GRADE = QuantityScale<Temperature>(Scale(0.01, -2.7315))
 val ABSOLUTE_GRADE = QuantityScale<Temperature>(Scale(0.01, 0.0))
 
-interface SpecificHeatCapacity
-val J_PER_KG_K = standardScale<SpecificHeatCapacity>()
-val J_PER_G_K = +J_PER_KG_K
-val KJ_PER_KG_K = +J_PER_KG_K
+@Classify("#J/kgK")interface SpecificHeatCapacity
+val JOULE_PER_KILOGRAM_KELVIN = standardScale<SpecificHeatCapacity>()
+val JOULE_PER_GRAM_KELVIN = +JOULE_PER_KILOGRAM_KELVIN
+val KILOJOULE_PER_KILOGRAM_KELVIN = +JOULE_PER_KILOGRAM_KELVIN
 
 @Classify("#J/K") interface HeatCapacity
-val J_PER_K = standardScale<HeatCapacity>()
+val JOULE_PER_KELVIN = standardScale<HeatCapacity>()
 
-interface ThermalConductivity
-val W_PER_M_K = standardScale<ThermalConductivity>()
-val mW_PER_M_K = -W_PER_M_K
+@Classify("#W/mK") interface ThermalConductivity
+val WATT_PER_METER_KELVIN = standardScale<ThermalConductivity>()
+val mW_PER_M_K = -WATT_PER_METER_KELVIN
+
+@Classify("#W/K") interface ThermalConductance
+val WATT_PER_KELVIN = standardScale<ThermalConductance>()
+
+@Classify("#Ωm")
+interface ElectricalResistivity
+val OHM_METER = standardScale<ElectricalResistivity>()
 
 interface MolecularWeight
-val KG_PER_MOLE = standardScale<MolecularWeight>()
-val G_PER_MOLE = -KG_PER_MOLE
+val KILOGRAM_PER_MOLE = standardScale<MolecularWeight>()
+val GRAM_PER_MOLE = -KILOGRAM_PER_MOLE
 
 @Classify("#Pa") interface Pressure
 val PASCAL = standardScale<Pressure>()
@@ -479,5 +495,5 @@ val Atm by ::ATMOSPHERES
 
 @Classify("#W/m²")
 interface Intensity
-val WATT_PER_M2 = standardScale<Intensity>()
-val KILOWATT_PER_M2 = +WATT_PER_M2
+val WATT_PER_METER2 = standardScale<Intensity>()
+val KILOWATT_PER_METER2 = +WATT_PER_METER2

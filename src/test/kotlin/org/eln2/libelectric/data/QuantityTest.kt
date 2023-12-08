@@ -1,7 +1,7 @@
 package org.eln2.libelectric.data
 
 import org.ageseries.libage.data.*
-import org.ageseries.libage.sim.thermal.STANDARD_TEMPERATURE
+import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.eln2.libelectric.TestUtils.areEqual
 import org.eln2.libelectric.TestUtils.areEqualAstronomic
 import org.junit.jupiter.api.Test
@@ -29,11 +29,11 @@ internal class QuantityTest {
     @Test
     fun time() {
         test(1.0, s, 1e3, ms)
-        test(1.0, s, 1e6, MICROSECONDS)
-        test(1.0, s, 1e9, NANOSECONDS)
-        test(1.0, MINUTES, 60.0, s)
-        test(1.0, HOURS, 3600.0, s)
-        test(1.0, DAYS, 24.0, HOURS)
+        test(1.0, s, 1e6, MICROSECOND)
+        test(1.0, s, 1e9, NANOSECOND)
+        test(1.0, MINUTE, 60.0, s)
+        test(1.0, HOUR, 3600.0, s)
+        test(1.0, DAY, 24.0, HOUR)
     }
 
     @Test
@@ -127,7 +127,7 @@ internal class QuantityTest {
 
     @Test
     fun radiationExposure() {
-        test(1.0, R, 2.58e-4, COULOMB_PER_KG)
+        test(1.0, R, 2.58e-4, COULOMB_PER_KILOGRAM)
         test(1.0, R, 1e3, mR)
         test(1.0, R, 1e6, uR)
         test(1.0, R, 1e9, nR)

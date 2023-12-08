@@ -243,3 +243,23 @@ fun <K, V> Map<K, V>.toMultiMap(): MultiMap<K, V> = entries.map { it.toPair() }.
  * Creates a MutableMultiMap from a Map, with each key associated to a set of size at most one.
  */
 fun <K, V> Map<K, V>.toMutableMultiMap(): MutableMultiMap<K, V> = entries.map { it.toPair() }.toMutableMultiMap()
+
+/**
+ * Constructs a [MultiMap] keyed by [K] with [T] values.
+ * Similar to [associateBy]
+ * */
+inline fun <T, K> Iterable<T>.associateByMulti(keySelector: (T) -> K): MultiMap<K, T> {
+    val result = MutableSetMapMultiMap<K, T>()
+
+    this.forEach { value ->
+        result[keySelector(value)].add(value)
+    }
+
+    return result
+}
+
+inline fun <T, K> Array<T>.associateByMulti(keySelector: (T) -> K): MultiMap<K, T> {
+    val result = MutableSetMapMultiMap<K, T>()
+    this.forEach { value -> result[keySelector(value)].add(value) }
+    return result
+}

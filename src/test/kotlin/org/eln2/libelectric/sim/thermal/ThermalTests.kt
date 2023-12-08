@@ -3,13 +3,14 @@ package org.eln2.libelectric.sim.thermal
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.thermal.*
+import org.ageseries.libage.sim.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
 
 internal class ThermalTests {
+    val IRON = ChemicalElement.Iron.asMaterial
+
     companion object {
         val A_BIT = Quantity(10.0, KELVIN)
     }
@@ -17,9 +18,9 @@ internal class ThermalTests {
     @Test
     fun consistent_data_model() {
         val sim = Simulator()
-        val a = ThermalMass(Material.IRON)
-        val b = ThermalMass(Material.IRON)
-        val c = ThermalMass(Material.IRON)
+        val a = ThermalMass(IRON)
+        val b = ThermalMass(IRON)
+        val c = ThermalMass(IRON)
         assert(a !in sim.masses)
         assert(b !in sim.masses)
         assert(c !in sim.masses)
@@ -54,8 +55,8 @@ internal class ThermalTests {
     @Test
     fun perfectly_isolated() {
         val sim = Simulator()
-        val a = ThermalMass(Material.IRON)
-        val b = ThermalMass(Material.IRON)
+        val a = ThermalMass(IRON)
+        val b = ThermalMass(IRON)
         a.temperature = STANDARD_TEMPERATURE
         b.temperature = STANDARD_TEMPERATURE + A_BIT
         listOf(a, b).forEach { sim.add(it) }
@@ -71,8 +72,8 @@ internal class ThermalTests {
     @Test
     fun second_law() {
         val sim = Simulator()  // Don't conduct from/to env
-        val a = ThermalMass(Material.IRON)
-        val b = ThermalMass(Material.IRON)
+        val a = ThermalMass(IRON)
+        val b = ThermalMass(IRON)
         val lesser = STANDARD_TEMPERATURE
         val greater = STANDARD_TEMPERATURE + A_BIT
         listOf(lesser to greater, greater to lesser).forEach { (a_temp, b_temp) ->
@@ -92,10 +93,10 @@ internal class ThermalTests {
         var lastIncrease: Quantity<Temperature>? = null
         for(it in 1..10) {
             val sim = Simulator()
-            val cen = ThermalMass(Material.IRON)
+            val cen = ThermalMass(IRON)
             cen.temperature = STANDARD_TEMPERATURE
             val others = (1..it).map {
-                ThermalMass(Material.IRON).also {
+                ThermalMass(IRON).also {
                     it.temperature = STANDARD_TEMPERATURE + A_BIT
                 }
             }
@@ -115,8 +116,8 @@ internal class ThermalTests {
     @Test
     fun environment() {
         val sim = Simulator()
-        val a = ThermalMass(Material.IRON)
-        val b = ThermalMass(Material.IRON)
+        val a = ThermalMass(IRON)
+        val b = ThermalMass(IRON)
         listOf(a, b).forEach {
             sim.add(it)
         }
@@ -134,8 +135,8 @@ internal class ThermalTests {
     @Test
     fun equilibrium() {
         val sim = Simulator()
-        val a = ThermalMass(Material.IRON)
-        val b = ThermalMass(Material.IRON)
+        val a = ThermalMass(IRON)
+        val b = ThermalMass(IRON)
         a.temperature = STANDARD_TEMPERATURE
         b.temperature = STANDARD_TEMPERATURE + A_BIT
         sim.connect(a, b)
@@ -155,16 +156,16 @@ internal class ThermalTests {
     @Test
     fun astronomical() {
         val sim = Simulator()
-        val a = ThermalMass(Material.IRON)
-        val b = ThermalMass(Material.IRON)
+        val a = ThermalMass(IRON)
+        val b = ThermalMass(IRON)
         a.temperature = STANDARD_TEMPERATURE * 1000.0
         b.temperature = Quantity(0.0, KELVIN)
         sim.connect(a, b)
-        for(step in 0 until 1000) {
+        for(step in 0 until 10000) {
             sim.step(1.0)
             assert(!a.temperature >= 0.0) { "negative energy: $a" }
             assert(!b.temperature >= 0.0) { "negative energy: $b" }
-            println("${!b.temperature - !a.temperature},${a.temperature},${b.temperature}")
+            //println("${!b.temperature - !a.temperature},${a.temperature},${b.temperature}")
             if(abs(!a.temperature - !b.temperature) < 1e-9) {
                 println("equalized at $step: $a = $b")
                 return
