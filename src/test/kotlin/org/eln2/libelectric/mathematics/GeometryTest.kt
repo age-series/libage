@@ -1,12 +1,14 @@
+@file:Suppress("LocalVariableName", "NonAsciiCharacters")
+
 package org.eln2.libelectric.mathematics
 
 import org.ageseries.libage.mathematics.*
 import org.eln2.libelectric.TestUtils.rangeScan
 import org.eln2.libelectric.TestUtils.rangeScanKd
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import kotlin.math.PI
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 internal class GeometryTest {
@@ -202,5 +204,319 @@ internal class GeometryTest {
                 assertTrue((a * (b / a)).approxEq(b))
             }
         }
+    }
+
+    @Test
+    fun matrix3x3Multiplication() {
+        val A = Matrix3x3(
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0
+        )
+
+        val B = Matrix3x3(
+            9.0, 8.0, 7.0,
+            6.0, 5.0, 4.0,
+            3.0, 2.0, 1.0
+        )
+
+        val AB = Matrix3x3(
+            30.0, 24.0, 18.0,
+            84.0, 69.0, 54.0,
+            138.0, 114.0, 90.0
+        )
+
+        assertEquals(A * B, AB)
+
+        val v = Vector3d(3.0, 1.0, 4.0)
+        val ABv = Vector3d(186.0, 537.0, 888.0)
+
+        assertEquals(AB * v, ABv)
+    }
+
+    @Test
+    fun matrix3x3RowsColumnsEntries() {
+        val A = Matrix3x3(
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0
+        )
+
+        assertEquals(A.r0, Vector3d(1.0, 2.0, 3.0))
+        assertEquals(A.r1, Vector3d(4.0, 5.0, 6.0))
+        assertEquals(A.r2, Vector3d(7.0, 8.0, 9.0))
+
+        assertEquals(A.c0, Vector3d(1.0, 4.0, 7.0))
+        assertEquals(A.c1, Vector3d(2.0, 5.0, 8.0))
+        assertEquals(A.c2, Vector3d(3.0, 6.0, 9.0))
+
+        assertEquals(A.getRow(0), Vector3d(1.0, 2.0, 3.0))
+        assertEquals(A.getRow(1), Vector3d(4.0, 5.0, 6.0))
+        assertEquals(A.getRow(2), Vector3d(7.0, 8.0, 9.0))
+
+        assertEquals(A.getColumn(0), Vector3d(1.0, 4.0, 7.0))
+        assertEquals(A.getColumn(1), Vector3d(2.0, 5.0, 8.0))
+        assertEquals(A.getColumn(2), Vector3d(3.0, 6.0, 9.0))
+
+        assertEquals(A[0, 0], 1.0)
+        assertEquals(A[0, 1], 2.0)
+        assertEquals(A[0, 2], 3.0)
+        assertEquals(A[1, 0], 4.0)
+        assertEquals(A[1, 1], 5.0)
+        assertEquals(A[1, 2], 6.0)
+        assertEquals(A[2, 0], 7.0)
+        assertEquals(A[2, 1], 8.0)
+        assertEquals(A[2, 2], 9.0)
+    }
+
+    @Test
+    fun matrix3x3TraceFrobenius() {
+        val A = Matrix3x3(
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0
+        )
+
+        assertEquals(A.trace, 1.0 + 5.0 + 9.0)
+        assertEquals(A.normFrobeniusSqr, 285.0)
+        assertEquals(A.normFrobenius, sqrt(285.0))
+    }
+
+    @Test
+    fun matrix3x3OrthogonalSpecialOrthogonal() {
+        val A = Matrix3x3(
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0
+        )
+
+        assertFalse(A.isOrthogonal)
+        assertFalse(A.isSpecialOrthogonal)
+
+        assertTrue(Matrix3x3.identity.isOrthogonal && Matrix3x3.identity.isSpecialOrthogonal)
+        assertTrue(Rotation3d.exp(Vector3d.one.normalized() * 42.0)().let { it.isOrthogonal && it.isSpecialOrthogonal })
+    }
+
+    @Test
+    fun matrix3x3Transpose() {
+        val A = Matrix3x3(
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 9.0
+        )
+
+        val Aᵀ = Matrix3x3(
+            1.0, 4.0, 7.0,
+            2.0, 5.0, 8.0,
+            3.0, 6.0, 9.0
+        )
+
+        assertEquals(A.transpose, Aᵀ)
+    }
+
+    @Test
+    fun matrix3x3Determinant() {
+        val A = Matrix3x3(
+            1.0, 3.0, 1.0,
+            5.0, 2.0, 5.0,
+            1.0, 2.0, 4.0
+        )
+
+        assertEquals(A.determinant, -39.0)
+    }
+
+    @Test
+    fun matrix3x3Inverse() {
+        val A = Matrix3x3(
+            1.0, 3.0, 1.0,
+            5.0, 2.0, 5.0,
+            1.0, 2.0, 4.0
+        )
+
+        val expected = Matrix3x3(
+            0.05128205128205128, 0.2564102564102564, -0.3333333333333333,
+            0.38461538461538464, -0.07692307692307693, 0.0,
+            -0.20512820512820512, -0.02564102564102564, 0.3333333333333333
+        )
+
+        assertTrue((!A).approxEq(expected))
+    }
+
+    @Test
+    fun matrix4x4Multiplication() {
+        val A = Matrix4x4(
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        )
+
+        val B = Matrix4x4(
+            16.0, 15.0, 14.0, 13.0,
+            12.0, 11.0, 10.0, 9.0,
+            8.0, 7.0, 6.0, 5.0,
+            4.0, 3.0, 2.0, 1.0
+        )
+
+        val AB = Matrix4x4(
+            80.0, 70.0, 60.0, 50.0,
+            240.0, 214.0, 188.0, 162.0,
+            400.0, 358.0, 316.0, 274.0,
+            560.0, 502.0, 444.0, 386.0
+        )
+
+        assertEquals(A * B, AB)
+
+        val v = Vector4d(3.0, 1.0, 4.0, 1.0)
+        val ABv = Vector4d(600.0, 1848.0, 3096.0, 4344.0)
+
+        assertEquals(AB * v, ABv)
+    }
+
+    @Test
+    fun matrix4x4RowsColumnsEntries() {
+        val A = Matrix4x4(
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        )
+
+        assertEquals(A.r0, Vector4d(1.0, 2.0, 3.0, 4.0))
+        assertEquals(A.r1, Vector4d(5.0, 6.0, 7.0, 8.0))
+        assertEquals(A.r2, Vector4d(9.0, 10.0, 11.0, 12.0))
+        assertEquals(A.r3, Vector4d(13.0, 14.0, 15.0, 16.0))
+
+        assertEquals(A.c0, Vector4d(1.0, 5.0, 9.0, 13.0))
+        assertEquals(A.c1, Vector4d(2.0, 6.0, 10.0, 14.0))
+        assertEquals(A.c2, Vector4d(3.0, 7.0, 11.0, 15.0))
+        assertEquals(A.c3, Vector4d(4.0, 8.0, 12.0, 16.0))
+
+        assertEquals(A.getRow(0), Vector4d(1.0, 2.0, 3.0, 4.0))
+        assertEquals(A.getRow(1), Vector4d(5.0, 6.0, 7.0, 8.0))
+        assertEquals(A.getRow(2), Vector4d(9.0, 10.0, 11.0, 12.0))
+        assertEquals(A.getRow(3), Vector4d(13.0, 14.0, 15.0, 16.0))
+
+        assertEquals(A.getColumn(0), Vector4d(1.0, 5.0, 9.0, 13.0))
+        assertEquals(A.getColumn(1), Vector4d(2.0, 6.0, 10.0, 14.0))
+        assertEquals(A.getColumn(2), Vector4d(3.0, 7.0, 11.0, 15.0))
+        assertEquals(A.getColumn(3), Vector4d(4.0, 8.0, 12.0, 16.0))
+
+        assertEquals(A[0, 0], 1.0)
+        assertEquals(A[0, 1], 2.0)
+        assertEquals(A[0, 2], 3.0)
+        assertEquals(A[0, 3], 4.0)
+        assertEquals(A[1, 0], 5.0)
+        assertEquals(A[1, 1], 6.0)
+        assertEquals(A[1, 2], 7.0)
+        assertEquals(A[1, 3], 8.0)
+        assertEquals(A[2, 0], 9.0)
+        assertEquals(A[2, 1], 10.0)
+        assertEquals(A[2, 2], 11.0)
+        assertEquals(A[2, 3], 12.0)
+        assertEquals(A[3, 0], 13.0)
+        assertEquals(A[3, 1], 14.0)
+        assertEquals(A[3, 2], 15.0)
+        assertEquals(A[3, 3], 16.0)
+    }
+
+    @Test
+    fun matrix4x4TraceFrobenius() {
+        val A = Matrix4x4(
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        )
+
+        assertEquals(A.trace, 1.0 + 6.0 + 11.0 + 16.0)
+        assertEquals(A.normFrobeniusSqr, (2.0 * sqrt(374.0)).pow(2))
+        assertEquals(A.normFrobenius, 2.0 * sqrt(374.0))
+    }
+
+    @Test
+    fun matrix4x4Transpose() {
+        val A = Matrix4x4(
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        )
+
+        val Aᵀ = Matrix4x4(
+            1.0, 5.0, 9.0, 13.0,
+            2.0, 6.0, 10.0, 14.0,
+            3.0, 7.0, 11.0, 15.0,
+            4.0, 8.0, 12.0, 16.0
+        )
+
+        assertEquals(A.transpose, Aᵀ)
+    }
+
+    @Test
+    fun matrix4x4Determinant() {
+        val A = Matrix4x4(
+            3.0, 1.0, 4.0, 1.0,
+            2.0, 7.0, 1.0, 8.0,
+            1.0, 6.0, 1.0, 8.0,
+            1.0, 0.0, 1.0, 0.0
+        )
+
+        assertEquals(A.determinant, 10.0)
+    }
+
+    @Test
+    fun matrix4x4Inverse() {
+        val A = Matrix4x4(
+            3.0, 1.0, 4.0, 1.0,
+            2.0, 7.0, 1.0, 8.0,
+            1.0, 6.0, 1.0, 8.0,
+            1.0, 0.0, 1.0, 0.0
+        )
+
+        val expected = Matrix4x4(
+            -8.0, 2.0, -1.0, 31.0,
+            8.0, 8.0, -9.0, -31.0,
+            8.0, -2.0, 1.0, -21.0,
+            -6.0, -6.0, 8.0, 22.0
+        ) * (1.0 / 10.0)
+
+        assertTrue((!A).approxEq(expected))
+    }
+
+    @Test
+    fun ddaTest() {
+        // I calculated these intersections on paper by drawing
+        // Maybe find a trusted DDA implementation to also make a 3D test (can't really draw it very easily)
+
+        val start = Vector3d(2.5, 1.5, 0.0)
+        val end = Vector3d(5.5, 8.5, 0.0)
+        val ray = Ray3d.fromSourceAndDestination(start, end)
+
+        val results = mutableListOf<Vector2di>()
+
+        dda(ray, true) { x, y, z ->
+            assertEquals(z, 0)
+
+            if(x == 5 && y == 8) {
+                false
+            }
+            else {
+                results.add(Vector2di(x, y))
+                true
+            }
+        }
+
+        assertEquals(results[0], Vector2di(2, 1))
+        assertEquals(results[1], Vector2di(2, 2))
+        assertEquals(results[2], Vector2di(3, 2))
+        assertEquals(results[3], Vector2di(3, 3))
+        assertEquals(results[4], Vector2di(3, 4))
+        assertEquals(results[5], Vector2di(4, 4))
+        assertEquals(results[6], Vector2di(4, 5))
+        assertEquals(results[7], Vector2di(4, 6))
+        assertEquals(results[8], Vector2di(4, 7))
+        assertEquals(results[9], Vector2di(5, 7))
+        assertEquals(results.size, 10)
     }
 }

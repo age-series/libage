@@ -63,7 +63,7 @@ data class Matrix3x3(val c0: Vector3d, val c1: Vector3d, val c2: Vector3d) {
         else -> error("Row $r out of bounds")
     }
 
-    operator fun get(c: Int, r: Int) = when (r) {
+    operator fun get(r: Int, c: Int) = when (r) {
         0 -> getColumn(c).x
         1 -> getColumn(c).y
         2 -> getColumn(c).z
@@ -90,12 +90,6 @@ data class Matrix3x3(val c0: Vector3d, val c1: Vector3d, val c2: Vector3d) {
     }
 
     companion object {
-        fun rows(r0: Vector3d, r1: Vector3d, r2: Vector3d) = Matrix3x3(
-            Vector3d(r0.x, r1.x, r2.x),
-            Vector3d(r0.y, r1.y, r2.y),
-            Vector3d(r0.z, r1.z, r2.z)
-        )
-
         val identity = Matrix3x3(Vector3d.unitX, Vector3d.unitY, Vector3d.unitZ)
 
         inline fun get(array: DoubleArray, c: Int, r: Int) = r * 3 + c
@@ -191,7 +185,7 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
         Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.w, c2.w, c3.w).determinant * c0.z -
         Matrix3x3(c1.x, c2.x, c3.x, c1.y, c2.y, c3.y, c1.z, c2.z, c3.z).determinant * c0.w
 
-    fun eliminate(eliminateC: Int, eliminateR: Int): Matrix3x3 {
+    fun eliminate(eliminateR: Int, eliminateC: Int): Matrix3x3 {
         val values = DoubleArray(3 * 3)
 
         var irActual = 0
@@ -259,7 +253,7 @@ data class Matrix4x4(val c0: Vector4d, val c1: Vector4d, val c2: Vector4d, val c
         else -> error("Row $r out of bounds")
     }
 
-    operator fun get(c: Int, r: Int) = when (r) {
+    operator fun get(r: Int, c: Int) = when (r) {
         0 -> getColumn(c).x
         1 -> getColumn(c).y
         2 -> getColumn(c).z
@@ -395,6 +389,31 @@ data class Matrix4x4Dual(val c0: Vector4dDual, val c1: Vector4dDual, val c2: Vec
             Vector4dDual.const(v.c2, n),
             Vector4dDual.const(v.c3, n)
         )
+    }
+}
+
+data class Vector2di(val x: Int, val y: Int) {
+    constructor(value: Int) : this(value, value)
+
+    operator fun unaryPlus() = this
+    operator fun unaryMinus() = Vector2di(-x, -y)
+    operator fun times(b: Int) = Vector2di(x * b, y * b)
+    operator fun div(b: Int) = Vector2di(x / b, y / b)
+    operator fun minus(b: Vector2di) = Vector2di(x - b.x, y - b.y)
+    operator fun plus(b: Vector2di) = Vector2di(x + b.x, y + b.y)
+
+    companion object {
+        val zero = Vector2di(0, 0)
+        val one = Vector2di(1, 1)
+        val unitX = Vector2di(1, 0)
+        val unitY = Vector2di(0, 1)
+
+        fun manhattan(a: Vector2di, b: Vector2di) : Int {
+            val dx = abs(a.x - b.x)
+            val dy = abs(a.y - b.y)
+
+            return dx + dy
+        }
     }
 }
 
@@ -1931,7 +1950,7 @@ fun bresenham(
     }
 }
 
-fun dda(ray: Ray3d, withSource: Boolean = true, user: (Int, Int, Int) -> Boolean) {
+inline fun dda(ray: Ray3d, withSource: Boolean = true, user: (Int, Int, Int) -> Boolean) {
     var x = floor(ray.origin.x).toInt()
     var y = floor(ray.origin.y).toInt()
     var z = floor(ray.origin.z).toInt()
