@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package org.ageseries.libage.data
 
 import org.ageseries.libage.mathematics.rounded
@@ -81,8 +83,13 @@ class ScaleMultiplier internal constructor(val factor: Double, val index: Int) {
     /**
      * Composes the base [scale] with this multiplier, returning a scale which is equivalent to the result of *[scale] * [factor]*.
      * */
-    operator fun<T> times(scale: StandardQuantityScale<T>) = scale.multiples[index]
+    operator fun<T> times(scale: SourceQuantityScale<T>) = scale.multiples[index]
 }
+
+/**
+ * Composes the base scale with this multiplier, returning another source scale.
+ * */
+internal infix fun<T> ScaleMultiplier.sourceCompose(scale: SourceQuantityScale<T>) = SourceQuantityScale<T>(scale.multiples[index].scale)
 
 /** Transforms the units into **pico- (×10⁻¹²)** */
 val PICO = ScaleMultiplier(1e-12, 0)
@@ -111,15 +118,11 @@ val TERA = ScaleMultiplier(1e12, 7)
 private val MULTIPLIERS = listOf(PICO, NANO, MICRO, MILLI, KILO, MEGA, GIGA, TERA)
 
 /**
- * [QuantityScale] with factor 1. Also offers the composition operation with [ScaleMultiplier]s.
+ * [QuantityScale] that is composable with [ScaleMultiplier].
+ * "Source" means it is a fundamental multiple of the standard (base) scale; normal multiplication/division yields non-source [QuantityScale] instances.
+ * Yielding [SourceQuantityScale] would cause infinite recursive creation of child scales.
  * */
-class StandardQuantityScale<Unit>(scale: Scale) : QuantityScale<Unit>(scale) {
-    init {
-        require(scale.factor == 1.0) {
-            "Base quantity scale must have a factor of 1"
-        }
-    }
-
+class SourceQuantityScale<Unit>(scale: Scale) : QuantityScale<Unit>(scale) {
     /**
      * Pre-computed lookup table for multiples of this scale.
      * When we apply a [ScaleMultiplier], we just fetch the pre-computed scale.
@@ -130,6 +133,22 @@ class StandardQuantityScale<Unit>(scale: Scale) : QuantityScale<Unit>(scale) {
         this * multiplier.factor
     }
 }
+
+/**
+ * Amplifies this scale and results in a new [SourceQuantityScale] (as opposed to [times] which results in [QuantityScale]).
+ * Separating from [this.times] is necessary to prevent the children scales creating children scales infinitely.
+ * */
+internal infix fun <U> SourceQuantityScale<U>.sourceAmplify(amplify: Double) = SourceQuantityScale<U>(Scale(scale.factor / amplify, scale.base))
+
+/**
+ * Reduces this scale and results in a new [SourceQuantityScale] (as opposed to [div] which results in [QuantityScale]).
+ * Separating from [this.div] is necessary to prevent the children scales creating children scales infinitely.
+ * */
+internal infix fun <U> SourceQuantityScale<U>.sourceReduce(reduce: Double) = SourceQuantityScale<U>(Scale(scale.factor * reduce, scale.base))
+
+internal fun <U> SourceQuantityScale<U>.sourceAmp() = this sourceAmplify  1000.0
+
+internal fun <U> SourceQuantityScale<U>.sourceSub() = this sourceReduce 1000.0
 
 /**
  * Denotes a tangible quantity distinguished by a designated [Unit] and a numeric [value].
@@ -233,14 +252,12 @@ class QuantityArray<Unit>(val backing: DoubleArray) {
 }
 
 /**
- * Classifies the [value] into a **multiple** and expresses it based on that **multiple**.
- * A multiplier (e.g. "kilo", "mega", ...) is chosen from [map] based on the magnitude of [value] in the said [base].
- * The multiplier is placed in the [unit] string at the character *#* (the [unit] can also be left empty). This constitutes the **multiple**.
- * The [value] is then adjusted based on the chosen magnitude, rounded to [decimals] and then suffixed with the **multiple**.
- *
+ * Categorizes the given numerical value into a scale and represents it using a corresponding scale factor.
+ * A scale factor (such as "kilo," "mega," etc.) is selected from a predefined list based on the magnitude of the given value in the specified base.
+ * The chosen scale factor is inserted into the designated position marked by '#' within the unit string (which can also be left empty), forming the scale representation.
  * @param value The value to classify.
  * @param base The base to use. Usually, this is 10 or 1000.
- * @param map A map of magnitudes to the multiplier. Not actually a [Map] because the algorithm scans the entire map to find the unit (justified because we don't care)
+ * @param map A map of magnitudes *to* multiplier. Not actually a [Map] because the algorithm scans the entire map to find the best multiplier (justified because we don't care)
  * @param unit The unit to place after the multiplier.
  * @param decimals The number of decimals to round the final value to.
  * @param inferFirst If true, no multiple will be prepended to the [unit], if the value is around magnitude 0.
@@ -325,8 +342,9 @@ annotation class Classify(
 )
 
 /**
- * Classifies this quantity into a *multiple*. If [T] is annotated with [Classify], the symbol and base specified in the annotation will be used.
- * Otherwise, the base [ClassificationBase.Base1000Standard] will be used and no unit symbol will be added.
+ * Classifies this quantity into a *multiple* using the [classify] API.
+ * If [T] is annotated with [Classify], the symbol and base specified in the annotation will be used.
+ * Otherwise, [ClassificationBase.Base1000Standard] will be used and no unit symbol will be added.
  * */
 inline fun<reified T> Quantity<T>.classify() : String {
     val annotation = T::class.java.getDeclaredAnnotation(Classify::class.java)
@@ -342,78 +360,81 @@ inline fun<reified T> Quantity<T>.classify() : String {
 /**
  * Defines the standard scale of the [Unit] (a scale with factor 1).
  * */
-fun <Unit> standardScale(factor: Double = 1.0) = StandardQuantityScale<Unit>(Scale(factor, 0.0))
+fun <Unit> standardScale(factor: Double = 1.0) = SourceQuantityScale<Unit>(Scale(factor, 0.0))
 
 @Classify("#g", factor = 1000.0) interface Mass
 val KILOGRAM = standardScale<Mass>()
-val GRAM = -KILOGRAM
+val GRAM = KILOGRAM.sourceSub()
 
 @Classify("#Da")
 interface AtomicMass
 val DALTON = standardScale<AtomicMass>()
 
+/**
+ * Gets the atomic mass expressed in [KILOGRAM].
+ * The result may not be useful due to the limited precision we're working with.
+ * */
 fun Quantity<AtomicMass>.asStandardMass() = Quantity(!this * 1.66053906660e-27, KILOGRAM)
 
 @Classify("#s") interface Time
 val SECOND = standardScale<Time>()
-val MINUTE = SECOND * 60.0
-val HOUR = MINUTE * 60.0
-val DAY = HOUR * 24.0
+val MINUTE = SECOND sourceAmplify 60.0
+val HOUR = MINUTE sourceAmplify 60.0
+val DAY = HOUR sourceAmplify 24.0
 
 @Classify("#Hz") interface Frequency
 val HERTZ = standardScale<Frequency>()
-val Hz by ::HERTZ
 
 @Classify("#m") interface Distance
 val METER = standardScale<Distance>()
-val CENTIMETER = METER / 100.0
-val ANGSTROM = METER * 1e-10
+val CENTIMETER = METER sourceReduce 100.0
+val ANGSTROM = METER sourceReduce 1e10
 
 @Classify("#J") interface Energy
 val JOULE = standardScale<Energy>()
-val ERG = JOULE * 1e-7
-val WATT_SECOND = QuantityScale<Energy>(Scale(JOULE.factor, 0.0))
-val WATT_MINUTE = WATT_SECOND * 60.0
-val WATT_HOUR = WATT_MINUTE * 60.0
+val ERG = JOULE sourceAmplify 1e-7
+val WATT_SECOND = JOULE
+val WATT_MINUTE = WATT_SECOND sourceAmplify  60.0
+val WATT_HOUR = WATT_MINUTE sourceAmplify 60.0
 // Serious precision issues? Hope not! :Fish_Smug:
-val ELECTRON_VOLT = JOULE * 1.602176634e-19
+val ELECTRON_VOLT = JOULE sourceAmplify  1.602176634e-19
 
 @Classify("#W") interface Power
 val WATT = standardScale<Power>()
 
 @Classify("#Bq") interface Radioactivity
 val BECQUEREL = standardScale<Radioactivity>()
-val CURIE = (GIGA * BECQUEREL) * 37.0
+val CURIE = (GIGA sourceCompose BECQUEREL) sourceAmplify 37.0
 
 @Classify("#Gy") interface RadiationAbsorbedDose
 val GRAY = standardScale<RadiationAbsorbedDose>()
-val RAD = GRAY / 100.0
+val RAD = GRAY sourceReduce 100.0
 
 @Classify("#Sv") interface RadiationDoseEquivalent
 val SIEVERT = standardScale<RadiationDoseEquivalent>()
-val REM = SIEVERT / 100.0
+val REM = SIEVERT sourceReduce 100.0
 
-@Classify("#R", 3875.96899225)
+@Classify("#R", factor = 3875.96899225)
 interface RadiationExposure
 val COULOMB_PER_KILOGRAM = standardScale<RadiationExposure>()
-val ROENTGEN = COULOMB_PER_KILOGRAM / 3875.96899225
+val ROENTGEN = COULOMB_PER_KILOGRAM sourceReduce 3875.96899225
 
 @Classify("#1/m") interface ReciprocalDistance
 val RECIP_METER = standardScale<ReciprocalDistance>()
-val RECIP_CENTIMETER = RECIP_METER * 100.0
+val RECIP_CENTIMETER = RECIP_METER sourceAmplify 100.0
 
 interface ArealDensity
 val KILOGRAM_PER_METER2 = standardScale<ArealDensity>()
-val GRAM_PER_CENTIMETER2 = KILOGRAM_PER_METER2 * 10.0
+val GRAM_PER_CENTIMETER2 = KILOGRAM_PER_METER2 sourceAmplify 10.0
 
 @Classify("#g/m³", factor = 1000.0) interface Density
 val KILOGRAM_PER_METER3 = standardScale<Density>()
-val G_PER_CM3 = KILOGRAM_PER_METER3 * 1000.0
+val G_PER_CM3 = KILOGRAM_PER_METER3 sourceAmplify 1000.0
 val G_PER_L = KILOGRAM_PER_METER3
 
 interface ReciprocalArealDensity
 val METER2_PER_KILOGRAM = standardScale<ReciprocalArealDensity>()
-val CENTIMETER2_PER_GRAM = METER2_PER_KILOGRAM / 10.0
+val CENTIMETER2_PER_GRAM = METER2_PER_KILOGRAM sourceReduce 10.0
 
 @Classify("#m/s") interface Velocity
 val METER_PER_SECOND = standardScale<Velocity>()
@@ -429,21 +450,20 @@ val METER2 = standardScale<Area>()
 
 @Classify("#m³") interface Volume
 val METER3 = standardScale<Volume>()
-val LITER = METER3 / 1000.0
+val LITER = METER3.sourceSub()
 
 @Classify("#K") interface Temperature
 val KELVIN = standardScale<Temperature>()
-val RANKINE = KELVIN * 0.555556
-val CELSIUS = QuantityScale<Temperature>(Scale(1.0, -273.15))
-val CENTIGRADE by ::CELSIUS
-val MILLIGRADE = QuantityScale<Temperature>(Scale(10.0, -2731.5))
-val GRADE = QuantityScale<Temperature>(Scale(0.01, -2.7315))
-val ABSOLUTE_GRADE = QuantityScale<Temperature>(Scale(0.01, 0.0))
+val RANKINE = KELVIN sourceAmplify 0.555556
+val CELSIUS = SourceQuantityScale<Temperature>(Scale(1.0, -273.15))
+val MILLIGRADE = SourceQuantityScale<Temperature>(Scale(10.0, -2731.5))
+val GRADE = SourceQuantityScale<Temperature>(Scale(0.01, -2.7315))
+val ABSOLUTE_GRADE = SourceQuantityScale<Temperature>(Scale(0.01, 0.0))
 
 @Classify("#J/kgK") interface SpecificHeatCapacity
 val JOULE_PER_KILOGRAM_KELVIN = standardScale<SpecificHeatCapacity>()
-val JOULE_PER_GRAM_KELVIN = +JOULE_PER_KILOGRAM_KELVIN
-val KILOJOULE_PER_KILOGRAM_KELVIN = +JOULE_PER_KILOGRAM_KELVIN
+val JOULE_PER_GRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
+val KILOJOULE_PER_KILOGRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
 
 @Classify("#J/K") interface HeatCapacity
 val JOULE_PER_KELVIN = standardScale<HeatCapacity>()
@@ -459,11 +479,11 @@ val OHM_METER = standardScale<ElectricalResistivity>()
 
 @Classify("#kg/mol") interface MolecularWeight
 val KILOGRAM_PER_MOLE = standardScale<MolecularWeight>()
-val GRAM_PER_MOLE = -KILOGRAM_PER_MOLE
+val GRAM_PER_MOLE = KILOGRAM_PER_MOLE.sourceSub()
 
 @Classify("#Pa") interface Pressure
 val PASCAL = standardScale<Pressure>()
-val ATMOSPHERES = PASCAL * 9.86923e-6
+val ATMOSPHERE = PASCAL sourceAmplify 9.86923e-6
 
 @Classify("#W/m²") interface Intensity
 val WATT_PER_METER2 = standardScale<Intensity>()
