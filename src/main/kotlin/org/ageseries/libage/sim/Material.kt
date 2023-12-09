@@ -12,7 +12,7 @@ data class Material(
     val specificHeat: Quantity<SpecificHeatCapacity>,
     val density: Quantity<Density>,
 ) {
-    override fun toString() = "<$label ρ=$electricalResistivity κ=$thermalConductivity c=$specificHeat ρ=$density>"
+    override fun toString() = "<$label ρ=${electricalResistivity.classify()} κ=${thermalConductivity.classify()} c=${specificHeat.classify()} ρ=${density.classify()}>"
 
     companion object {
         /**
