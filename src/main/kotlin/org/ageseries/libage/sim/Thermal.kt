@@ -4,6 +4,7 @@ package org.ageseries.libage.sim
 
 import org.ageseries.libage.data.*
 import java.util.*
+import java.util.function.Supplier
 import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -92,7 +93,25 @@ class ThermalMass(val material: Material, energy: Quantity<Energy>? = null, val 
         get() = temperatureAt(energy)
         set(value) { energy = Quantity(!value * !mass * !material.specificHeat, JOULE) }
 
-    override fun toString() = "<Thermal Mass $material m=$mass E=$energy T=$temperature>"
+    override fun toString() = "<Thermal Mass $material m=${mass.classify()} E=${energy.classify()} T=${temperature.classify()}>"
+}
+
+/**
+ * Factory for [ThermalMass] instances. Includes all information necessary to create a new instance.
+ * */
+data class ThermalMassDefinition(val material: Material, val energy: Quantity<Energy>? = null, val mass: Quantity<Mass> = Quantity(1.0, KILOGRAM)) : Supplier<ThermalMass> {
+    /**
+     * Creates a new instance of [ThermalMass] with the properties specified in this definition.
+     * */
+    override fun get() = ThermalMass(material, energy, mass)
+
+    override fun toString() = "Def ${this()}"
+
+    /**
+     * Calls [get] to create a new instance of [ThermalMass].
+     * I quite like this; I don't particularly appreciate *`.get()`* semantics for a factory.
+     * */
+    operator fun invoke() = get()
 }
 
 data class ConnectionParameters(
