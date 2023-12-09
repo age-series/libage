@@ -27,8 +27,9 @@ data class Scale(val factor: Double, val base: Double) {
 }
 
 /**
- * [Scale] parameterized by [Unit], which corresponds to the physical property that the scale measures (e.g. distance, time, ...)
- * [Unit] is separate from the [scale]; e.g. [Distance] can be expressed in [KELVIN], [GRADE], ...
+ * [Scale], parameterized by [Unit], aligns with the physical attribute measured by the scale (such as distance, time, and so forth).
+ * Notably, [Unit] remains distinct from the [scale]; for instance, [Distance] can be measured in [KELVIN], [GRADE], and other units.
+ * It is important to recognize that [Unit] functions merely as a compiler mechanism and holds no inherent functional significance.
  * */
 open class QuantityScale<Unit>(val scale: Scale) {
     val factor get() = scale.factor
@@ -72,10 +73,14 @@ open class QuantityScale<Unit>(val scale: Scale) {
 }
 
 /**
- * Represents a multiplication factor that is used to modify a [QuantityScale].
- * Extending this is currently not supported, because the usage (composition with [QuantityScale]) uses a pre-computed lookup table so that no new [QuantityScale] instances are allocated.
+ * Signifies a multiplication factor employed to adjust a [QuantityScale].
+ * Presently, its extension is not supported; to minimize runtime cost, a lookup table is precomputed.
+ * This design ensures the avoidance of additional allocations for new instances of [QuantityScale] (the composition cost boils down to accessing the precomputed instance).
  * */
 class ScaleMultiplier internal constructor(val factor: Double, val index: Int) {
+    /**
+     * Composes the base [scale] with this multiplier, returning a scale which is equivalent to the result of *[scale] * [factor]*.
+     * */
     operator fun<T> times(scale: StandardQuantityScale<T>) = scale.multiples[index]
 }
 
@@ -106,7 +111,7 @@ val TERA = ScaleMultiplier(1e12, 7)
 private val MULTIPLIERS = listOf(PICO, NANO, MICRO, MILLI, KILO, MEGA, GIGA, TERA)
 
 /**
- * [QuantityScale] with factor 1. Also offers composition operations with [ScaleMultiplier]s.
+ * [QuantityScale] with factor 1. Also offers the composition operation with [ScaleMultiplier]s.
  * */
 class StandardQuantityScale<Unit>(scale: Scale) : QuantityScale<Unit>(scale) {
     init {
@@ -127,23 +132,25 @@ class StandardQuantityScale<Unit>(scale: Scale) : QuantityScale<Unit>(scale) {
 }
 
 /**
- * Represents a physical quantity, characterised by a [Unit] and a real number [value].
- * [value] is **always** expressed in the base units (e.g. *Kelvin*, *Meter*, *Kilogram*, ...)
+ * Denotes a tangible quantity distinguished by a designated [Unit] and a numeric [value].
+ * The [value] is consistently expressed in fundamental units, such as Kelvin, Meter, Kilogram, and the like.
+ * This design is sufficiently straightforward to be instantiated as an inline value-class, thereby rendering the runtime overhead of carrying around [Quantity] virtually negligible.
+ * The [not] operator was chosen because it is the least "ugly" way to quickly fetch the [value] for subsequent operations with [Double].
+ * If you don't like it, Grissess, just access [value].
  * */
 @JvmInline
 value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
     /**
-     * Constructs a [Quantity] with the [value] set to [quantity] mapped back from [scale].
+     * Creates a [Quantity] where its [value] is established as the equivalent of [sourceValue] in the [standardScale].
      * */
-    constructor(quantity: Double, scale: QuantityScale<Unit>) : this(scale.scale.unmap(quantity))
+    constructor(sourceValue: Double, scale: QuantityScale<Unit>) : this(scale.scale.unmap(sourceValue))
 
     val isZero get() = value == 0.0
 
     /**
-     * Gets the [value] of this quantity.
+     * Gets the [value] quickly and nicely.
      * */
-    @Suppress("NOTHING_TO_INLINE")
-    inline operator fun not() = value // Pretty sure it gets inlined but let's make sure
+    operator fun not() = value
     operator fun unaryMinus() = Quantity<Unit>(-value)
     operator fun unaryPlus() = Quantity<Unit>(+value)
     operator fun plus(b: Quantity<Unit>) = Quantity<Unit>(this.value + b.value)
@@ -152,7 +159,7 @@ value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
     operator fun div(scalar: Double) = Quantity<Unit>(this.value / scalar)
 
     /**
-     * Divides the quantity by another quantity of the same unit. This, in turn, cancels out the quantity, returning the resulting number.
+     * Divides the quantity by another quantity of the same unit. This, in turn, cancels out the [Unit], returning the resulting number.
      * */
     operator fun div(b: Quantity<Unit>) = this.value / b.value
 
@@ -168,15 +175,24 @@ value class Quantity<Unit>(val value: Double) : Comparable<Quantity<Unit>> {
     override fun toString() = value.toString()
 }
 
+@JvmName("quantityPlusDouble") operator fun <U> Quantity<U>.plus(b: Double) = Quantity<U>(this.value + b)
+@JvmName("quantityMinusDouble") operator fun <U> Quantity<U>.minus(b: Double) = Quantity<U>(this.value - b)
+@JvmName("doublePlusQuantity") operator fun <U> Double.plus(b: Quantity<U>) = Quantity<U>(this + b.value)
+@JvmName("doubleMinusQuantity") operator fun <U> Double.minus(b: Quantity<U>) = Quantity<U>(this - b.value)
+
 fun <U> min(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.min(!a, !b))
 fun <U> max(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(kotlin.math.max(!a, !b))
 fun <U> abs(q: Quantity<U>) = Quantity<U>(abs(!q))
 
-/** An iterator over a sequence of values of type `Quantity`. */
+/**
+ * An iterator over a sequence of values of type [Quantity].
+ * */
 abstract class QuantityIterator<Unit> : Iterator<Quantity<Unit>> {
     final override fun next() = nextQuantity()
 
-    /** Returns the next value in the sequence without boxing. */
+    /**
+     * Returns the next value in the sequence without boxing.
+     * */
     abstract fun nextQuantity() : Quantity<Unit>
 }
 
@@ -309,7 +325,7 @@ annotation class Classify(
 )
 
 /**
- * Classifies this quantity into a multiple. If [T] is annotated with [Classify], the symbol and base specified in the annotation will be used.
+ * Classifies this quantity into a *multiple*. If [T] is annotated with [Classify], the symbol and base specified in the annotation will be used.
  * Otherwise, the base [ClassificationBase.Base1000Standard] will be used and no unit symbol will be added.
  * */
 inline fun<reified T> Quantity<T>.classify() : String {
@@ -331,28 +347,18 @@ fun <Unit> standardScale(factor: Double = 1.0) = StandardQuantityScale<Unit>(Sca
 @Classify("#g", factor = 1000.0) interface Mass
 val KILOGRAM = standardScale<Mass>()
 val GRAM = -KILOGRAM
-val MILLIGRAM = -GRAM
-val kg by ::KILOGRAM
-val g by ::GRAM
-val mg by ::MILLIGRAM
 
 @Classify("#Da")
 interface AtomicMass
 val DALTON = standardScale<AtomicMass>()
-val Da by ::DALTON
 
 fun Quantity<AtomicMass>.asStandardMass() = Quantity(!this * 1.66053906660e-27, KILOGRAM)
 
 @Classify("#s") interface Time
 val SECOND = standardScale<Time>()
-val MILLISECOND = -SECOND
-val MICROSECOND = -MILLISECOND
-val NANOSECOND = -MICROSECOND
 val MINUTE = SECOND * 60.0
 val HOUR = MINUTE * 60.0
 val DAY = HOUR * 24.0
-val s by ::SECOND
-val ms by ::MILLISECOND
 
 @Classify("#Hz") interface Frequency
 val HERTZ = standardScale<Frequency>()
@@ -361,113 +367,36 @@ val Hz by ::HERTZ
 @Classify("#m") interface Distance
 val METER = standardScale<Distance>()
 val CENTIMETER = METER / 100.0
-val MILLIMETER = -METER
 val ANGSTROM = METER * 1e-10
-val m by ::METER
-val cm by ::CENTIMETER
-val mm by ::MILLIMETER
 
 @Classify("#J") interface Energy
 val JOULE = standardScale<Energy>()
-val MILLIJOULE = -JOULE
-val MICROJOULE = -MILLIJOULE
-val NANOJOULE = -MICROJOULE
 val ERG = JOULE * 1e-7
-val KILOJOULE = +JOULE
-val MEGAJOULE = +KILOJOULE
-val GIGAJOULE = +MEGAJOULE
 val WATT_SECOND = QuantityScale<Energy>(Scale(JOULE.factor, 0.0))
 val WATT_MINUTE = WATT_SECOND * 60.0
 val WATT_HOUR = WATT_MINUTE * 60.0
-val KILOWATT_HOUR = WATT_HOUR * 1000.0
-val MEGAWATT_HOUR = KILOWATT_HOUR * 1000.0
-val J by ::JOULE
-val kJ by ::KILOJOULE
-val MJ by ::MEGAJOULE
-val GJ by ::GIGAJOULE
-val Ws by ::WATT_SECOND
-val Wmin by ::WATT_MINUTE
-val Wh by ::WATT_HOUR
-val kWh by ::KILOWATT_HOUR
-val MWh by ::MEGAWATT_HOUR
 // Serious precision issues? Hope not! :Fish_Smug:
 val ELECTRON_VOLT = JOULE * 1.602176634e-19
-val KILO_ELECTRON_VOLT = JOULE * 1.602176634e-16
-val MEGA_ELECTRON_VOLT = JOULE * 1.602176634e-13
-val GIGA_ELECTRON_VOLT = JOULE * 1.602176634e-10
-val TERA_ELECTRON_VOLT = JOULE * 1.602176634e-7
-val eV by ::ELECTRON_VOLT
-val keV by ::KILO_ELECTRON_VOLT
-val MeV by ::MEGA_ELECTRON_VOLT
-val GeV by ::GIGA_ELECTRON_VOLT
-val TeV by ::TERA_ELECTRON_VOLT
 
 @Classify("#W") interface Power
 val WATT = standardScale<Power>()
-val MILLIWATT = -WATT
-val KILOWATT = +WATT
-val MEGAWATT = +KILOWATT
-val GIGAWATT = +MEGAWATT
-val W by ::WATT
-val kW by ::KILOWATT
-val MW by ::MEGAWATT
-val GW by ::GIGAWATT
 
 @Classify("#Bq") interface Radioactivity
 val BECQUEREL = standardScale<Radioactivity>()
-val KILOBECQUERELS = BECQUEREL * 1e3
-val MEGABECQUERELS = BECQUEREL * 1e6
-val GIGABECQUERELS = BECQUEREL * 1e9
-val TERABECQUERELS = BECQUEREL * 1e12
-val CURIE = GIGABECQUERELS * 37.0
-val MILLICURIES = MEGABECQUERELS * 37.0
-val MICROCURIES = KILOBECQUERELS * 37.0
-val NANOCURIES = BECQUEREL * 37.0
-val KILOCURIES = +CURIE
-val MEGACURIES = +KILOCURIES
-val GIGACURIES = +MEGACURIES // Average conversation with Grissess (every disintegration is a cute dragon image)
-val Bq by ::BECQUEREL
-val kBq by ::KILOBECQUERELS
-val MBq by ::MEGABECQUERELS
-val GBq by ::GIGABECQUERELS
-val TBq by ::TERABECQUERELS
-val Ci by ::CURIE
-val kCi by ::KILOCURIES
-val mCi by ::MILLICURIES
-val uCi by ::MICROCURIES
-val nCi by ::NANOCURIES
+val CURIE = (GIGA * BECQUEREL) * 37.0
 
 @Classify("#Gy") interface RadiationAbsorbedDose
 val GRAY = standardScale<RadiationAbsorbedDose>()
-val MILLIGRAY = -GRAY
 val RAD = GRAY / 100.0
-val Gy by ::GRAY
-val mGy by ::MILLIGRAY
 
 @Classify("#Sv") interface RadiationDoseEquivalent
 val SIEVERT = standardScale<RadiationDoseEquivalent>()
-val MILLISIEVERTS = -SIEVERT
-val MICROSIEVERTS = -MILLISIEVERTS
-val NANOSIEVERTS = -MICROSIEVERTS
 val REM = SIEVERT / 100.0
-val MILLIREM = -REM
-val MICROREM = -MILLIREM
-val Sv by ::SIEVERT
-val mSv by ::MILLISIEVERTS
-val uSv by ::MICROSIEVERTS
-val nSv by ::NANOSIEVERTS
 
 @Classify("#R", 3875.96899225)
 interface RadiationExposure
 val COULOMB_PER_KILOGRAM = standardScale<RadiationExposure>()
 val ROENTGEN = COULOMB_PER_KILOGRAM / 3875.96899225
-val MILLIROENTGEN = -ROENTGEN
-val MICROROENTGEN = -MILLIROENTGEN
-val NANOROENTGEN = -MICROROENTGEN
-val R by ::ROENTGEN
-val mR by ::MILLIROENTGEN
-val uR by ::MICROROENTGEN
-val nR by ::NANOROENTGEN
 
 @Classify("#1/m") interface ReciprocalDistance
 val RECIP_METER = standardScale<ReciprocalDistance>()
@@ -488,7 +417,6 @@ val CENTIMETER2_PER_GRAM = METER2_PER_KILOGRAM / 10.0
 
 @Classify("#m/s") interface Velocity
 val METER_PER_SECOND = standardScale<Velocity>()
-val KILOMETER_PER_SECOND = +METER_PER_SECOND
 
 @Classify("#mol") interface Substance
 val MOLE = standardScale<Substance>()
@@ -501,10 +429,7 @@ val METER2 = standardScale<Area>()
 
 @Classify("#m³") interface Volume
 val METER3 = standardScale<Volume>()
-val LITERS = METER3 / 1000.0
-val MILLILITERS = -LITERS
-val L by ::LITERS
-val mL by ::MILLILITERS
+val LITER = METER3 / 1000.0
 
 @Classify("#K") interface Temperature
 val KELVIN = standardScale<Temperature>()
@@ -525,7 +450,6 @@ val JOULE_PER_KELVIN = standardScale<HeatCapacity>()
 
 @Classify("#W/mK") interface ThermalConductivity
 val WATT_PER_METER_KELVIN = standardScale<ThermalConductivity>()
-val mW_PER_M_K = -WATT_PER_METER_KELVIN
 
 @Classify("#W/K") interface ThermalConductance
 val WATT_PER_KELVIN = standardScale<ThermalConductance>()
@@ -540,40 +464,21 @@ val GRAM_PER_MOLE = -KILOGRAM_PER_MOLE
 @Classify("#Pa") interface Pressure
 val PASCAL = standardScale<Pressure>()
 val ATMOSPHERES = PASCAL * 9.86923e-6
-val Pa by ::PASCAL
-val Atm by ::ATMOSPHERES
 
 @Classify("#W/m²") interface Intensity
 val WATT_PER_METER2 = standardScale<Intensity>()
-val KILOWATT_PER_METER2 = +WATT_PER_METER2
 
 @Classify("#V") interface Potential
 val VOLT = standardScale<Potential>()
-val KILOVOLT = +VOLT
-val MILLIVOLT = -VOLT
-val V by ::VOLT
-val KV by ::KILOVOLT
 
 @Classify("#A") interface Current
 val AMPERE = standardScale<Current>()
-val MILLIAMPERE = -AMPERE
-val A by ::AMPERE
-val mA by ::MILLIAMPERE
 
 @Classify("#Ω") interface Resistance
 val OHM = standardScale<Resistance>()
-val KILOOHM = +OHM
-val MEGAOHM = +KILOOHM
-val GIGAOHM = +MEGAOHM
-val MILLIOHM = -OHM
 
 @Classify("#F") interface Capacitance
 val FARAD = standardScale<Capacitance>()
-val KILOFARAD = +FARAD
-val MILLIFARAD = -FARAD
-val MICROFARAD = -MILLIFARAD
-val NANOFARAD = -MICROFARAD
-// Picofarad, maybe numerical error?
 
 @Classify("#S") interface ElectricalConductance
 val SIEMENS = standardScale<ElectricalConductance>()
@@ -583,5 +488,9 @@ val COULOMB = standardScale<ElectricalCharge>()
 
 @Classify("#H") interface Inductance
 val HENRY = standardScale<Inductance>()
-val MILLIHENRY = -HENRY
-val MICROHENRY = -MILLIHENRY
+
+@Classify("#J/kg") interface MassEnergyDensity
+val JOULE_PER_KILOGRAM = standardScale<MassEnergyDensity>()
+
+@Classify("#J/m³") interface VolumeEnergyDensity
+val JOULE_PER_METER3 = standardScale<VolumeEnergyDensity>()
