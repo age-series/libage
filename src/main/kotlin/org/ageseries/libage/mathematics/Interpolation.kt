@@ -813,8 +813,8 @@ fun <T> T.adaptscan(t0: Double, t1: Double, tIncrMax: Double, iMax: Int = Int.MA
     return if (this.adaptscan(t0, t1, tIncrMax, iMax, condition) { results.add(it) }) results else null
 }
 
-fun Spline3d.intersectGrid3d(t0: Double, t1: Double, tIncrMax: Double, iMax: Int) : HashSet<Vector3di>? {
-    val results = HashSet<Vector3di>()
+fun Spline3d.intersectGrid3d(t0: Double, t1: Double, tIncrMax: Double, iMax: Int) : HashSet<Double>? {
+    val results = HashSet<Double>()
 
     val flag = this.adaptscan(t0, t1, tIncrMax, iMax, { _, a, b ->
         val pA = this.evaluate(a)
@@ -826,9 +826,7 @@ fun Spline3d.intersectGrid3d(t0: Double, t1: Double, tIncrMax: Double, iMax: Int
         else {
             (pA distanceToSqr pB) > 0.5
         }
-    }) {
-        results.add(this.evaluate(it).floorInt())
-    }
+    }) { results.add(it) }
 
     return if(flag) results
     else null
