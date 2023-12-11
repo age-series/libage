@@ -30,7 +30,7 @@ data class Scale(val factor: Double, val base: Double) {
 
 /**
  * [Scale], parameterized by [Unit], aligns with the physical attribute measured by the scale (such as distance, time, and so forth).
- * Notably, [Unit] remains distinct from the [scale]; for instance, [Distance] can be measured in [KELVIN], [GRADE], and other units.
+ * Notably, [Unit] remains distinct from the [scale]; for instance, [Distance] can be measured in [METER]s, feet, dragon tails, american football fields, and other units.
  * It is important to recognize that [Unit] functions merely as a compiler mechanism and holds no inherent functional significance.
  * */
 open class QuantityScale<Unit>(val scale: Scale) {
