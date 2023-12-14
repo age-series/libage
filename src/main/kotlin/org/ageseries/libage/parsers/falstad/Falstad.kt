@@ -20,7 +20,7 @@ import org.ageseries.libage.sim.electrical.mna.Node
 import org.ageseries.libage.sim.electrical.mna.component.Component
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
-import org.ageseries.libage.data.DisjointSet
+import org.ageseries.libage.data.SuperDisjointSet
 import org.ageseries.libage.space.Vec2i
 
 /**
@@ -161,11 +161,11 @@ data class CCData(val falstad: Falstad, val line: FalstadLine) {
 }
 
 /**
- * A [DisjointSet] subclass which holds a [PinPos].
+ * A [SuperDisjointSet] subclass which holds a [PinPos].
  *
  * The Set class is used to implement the Disjoint Sets algorithm; the representative of the merged sets is used to determine which PinPos' are connected by wires, and thus merged into [Node]s as present in the [Circuit].
  */
-data class PosSet(val pos: PinPos) : DisjointSet()
+data class PosSet(val pos: PinPos) : SuperDisjointSet<PosSet>()
 
 /**
  * An interface for constructing [Component]s (usually)
@@ -255,7 +255,7 @@ abstract class PoleConstructor : IComponentConstructor {
  */
 class Falstad(val source: String) {
     /**
-     * "List of roots" (of the [Disjoint Set][DisjointSet] forest); a mapping from [PinPos] to [PosSet].
+     * "List of roots" (of the [Disjoint Set][SuperDisjointSet] forest); a mapping from [PinPos] to [PosSet].
      *
      * The values of this map are members of the forest (not necessarily "roots", but the root can easily be found as the representative).
      */

@@ -1,6 +1,6 @@
 package org.ageseries.libage.sim.electrical.mna.component
 
-import org.ageseries.libage.data.DisjointSet
+import org.ageseries.libage.data.SuperDisjointSet
 import org.ageseries.libage.debug.dprintln
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.GroundNode
@@ -18,25 +18,24 @@ import kotlin.collections.ArrayList
 class ConnectionMutationException: Exception()
 
 /**
- * A connectable "point" on a component. The [representative] of this [DisjointSet] owns a [Node].
+ * A connectable "point" on a component. The [representative] of this [SuperDisjointSet] owns a [Node].
  */
-class Pin: DisjointSet() {
+class Pin: SuperDisjointSet<Pin>() {
     private var internalNode: Node? = null
+
     var node: Node?
-        get() = (representative as Pin).internalNode
+        get() = representative.internalNode
         set(value) {
             dprintln("P.n.<set>: $this from=$node to=$value on=${representative as Pin}")
-            (representative as Pin).internalNode = value
+            representative.internalNode = value
             dprintln("P.n.<set>: out $this node=$node")
         }
 
-    override fun unite(other: DisjointSet) {
-        val opin = other as? Pin
-        if(opin != null) {  // This should be the hot path
-            val node = Node.mergeData(internalNode, opin.internalNode)
-            internalNode = node
-            opin.internalNode = node
-        }
+    override fun unite(other: Pin) {
+        // This should be the hot path
+        val node = Node.mergeData(internalNode, other.internalNode)
+        internalNode = node
+        other.internalNode = node
         super.unite(other)
     }
 

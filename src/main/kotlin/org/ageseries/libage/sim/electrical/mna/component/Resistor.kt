@@ -1,6 +1,7 @@
 package org.ageseries.libage.sim.electrical.mna.component
 
 import org.ageseries.libage.debug.dprintln
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.electrical.mna.Circuit
 
 /**
@@ -285,4 +286,18 @@ open class Switch: Resistor() {
     fun toggle() {
         open = !open
     }
+}
+
+/**
+ * Updates the resistance if the deviation between the current resistance and [newValue] is larger than [eps].
+ * This should be used instead of setting [IResistor.resistance] whenever possible, because setting the resistance is expensive when [this] is [Resistor].
+ * @return True if the resistance was updated. Otherwise, false.
+ * */
+fun IResistor.updateResistance(newValue: Double, eps: Double = 1e-4): Boolean {
+    if(this.resistance.approxEq(newValue, eps)) {
+        return false
+    }
+
+    this.resistance = newValue
+    return true
 }
