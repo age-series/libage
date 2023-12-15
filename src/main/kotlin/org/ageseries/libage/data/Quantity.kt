@@ -670,9 +670,16 @@ val AUXILIARY_CLASSIFIERS: Map<Class<*>, MultiMap<ScaleRef<*>, String>> = run {
 
             val auxiliaries = map.getOrPut(scale.dimensionType) { MutableSetMapMultiMap() }
 
-            listOf(annotation.symbol).plus(annotation.identifiers).forEach { identifier ->
+            val identifiers = if(annotation.identifiers.isEmpty()) {
+                listOf(annotation.symbol).iterator()
+            }
+            else {
+                annotation.identifiers.iterator()
+            }
+
+            identifiers.forEach {
                 @Suppress("UNCHECKED_CAST")
-                auxiliaries[property as ScaleRef<*>].add(identifier)
+                auxiliaries[property as ScaleRef<*>].add(it)
             }
         }
     }

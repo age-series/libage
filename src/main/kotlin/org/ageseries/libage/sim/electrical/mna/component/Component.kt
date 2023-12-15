@@ -2,11 +2,7 @@ package org.ageseries.libage.sim.electrical.mna.component
 
 import org.ageseries.libage.data.SuperDisjointSet
 import org.ageseries.libage.debug.dprintln
-import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.GroundNode
-import org.ageseries.libage.sim.electrical.mna.IDetail
-import org.ageseries.libage.sim.electrical.mna.Node
-import org.ageseries.libage.sim.electrical.mna.VSource
+import org.ageseries.libage.sim.electrical.mna.*
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -26,7 +22,7 @@ class Pin: SuperDisjointSet<Pin>() {
     var node: Node?
         get() = representative.internalNode
         set(value) {
-            dprintln("P.n.<set>: $this from=$node to=$value on=${representative as Pin}")
+            dprintln("P.n.<set>: $this from=$node to=$value on=${representative}")
             representative.internalNode = value
             dprintln("P.n.<set>: out $this node=$node")
         }
@@ -50,19 +46,15 @@ class Pin: SuperDisjointSet<Pin>() {
  * As [Pin]s are created and destroyed anytime a [Component] is added or removed from a circuit, this class provides a stable abstraction for naming a [Pin] that can be safely sent wherever the [Component] is used.
  *
  * Because of the former, getters on this class should be treated as ephemeral, and *will* race with data modifications to the underlying [Circuit] without causing errors. If you have to cache these variables, keep their lifetimes short and bounded.
+ * @param component The [Component] whose pin is being described.
+ * @param pinIndex The index of the [Pin] on the [component].
  */
-class PinRef(
-    /** The [Component] whose pin is being described. */
-    val component: Component,
-    pinIndex: Int)
-{
+class PinRef(val component: Component, val pinIndex: Int) {
     init {
-       if(pinIndex < 0 || pinIndex >= component.pinCount)
-           error("Invalid pin index $pinIndex")
+        require(pinIndex >= 0 && pinIndex < component.pinCount) {
+            "Pin $pinIndex is out-of-bounds"
+        }
     }
-
-    /** The index of the [Pin] on the [component]. */
-    val pinIndex = pinIndex
 
     /** Whether the [component] is in a [Circuit]. */
     val isInCircuit get() = component.isInCircuit
@@ -127,6 +119,10 @@ class PinRef(
     }
 }
 
+/**
+ * Represents a common ancestor for [Component] and [VirtualComponent].
+ * Useful downstream, where we have methods and DTOs where we use [Term] instead of separate handling for [Component] and [VirtualComponent].
+ * */
 interface Term
 
 /**
