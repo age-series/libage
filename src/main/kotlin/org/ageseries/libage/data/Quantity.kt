@@ -4,6 +4,7 @@
 package org.ageseries.libage.data
 
 import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.utils.sourceName
 import kotlin.math.abs
 import kotlin.math.log
 import kotlin.math.pow
@@ -560,7 +561,7 @@ val KELVIN = standardScale<Temperature>()
 @Classify("J/kgK") interface SpecificHeatCapacity
 val JOULE_PER_KILOGRAM_KELVIN = standardScale<SpecificHeatCapacity>()
 @Auxiliary("J/gK") val JOULE_PER_GRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
-@Auxiliary("KJ/kgK") val KILOJOULE_PER_KILOGRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
+@Auxiliary("kJ/kgK") val KILOJOULE_PER_KILOGRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
 
 @Classify("J/K") interface HeatCapacity
 val JOULE_PER_KELVIN = standardScale<HeatCapacity>()
@@ -648,6 +649,11 @@ val AUXILIARY_CLASSIFIERS = run {
 }
 
 /**
+ * Gets a map of dimension type classes (dimension interface).
+ * */
+val DIMENSION_TYPES = AUXILIARY_CLASSIFIERS.keys.associateWithBi { it.sourceName() }
+
+/**
  * Classifies this quantity with the specified auxiliary unit.
  * If the auxiliary does not exist, the base classification will be used.
  * */
@@ -679,14 +685,8 @@ inline fun<reified T> Quantity<T>.classify(override: String) : String {
  * Map of unit dimension to override identifier. The classification override is as specified in [Auxiliary.aliases]
  * */
 class AuxiliaryClassifiers(val overrides: Map<String, String>) {
-    companion object {
-        inline fun<reified T> name() = checkNotNull(T::class.simpleName) {
-            "Failed to get name of ${T::class}"
-        }
-    }
-
     inline fun<reified T> classify(quantity: Quantity<T>) : String {
-        val override = overrides[name<T>()]
+        val override = overrides[sourceName<T>()]
 
         return if(override == null) {
             quantity.classify()
