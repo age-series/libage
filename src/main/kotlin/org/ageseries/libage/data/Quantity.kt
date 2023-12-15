@@ -450,13 +450,13 @@ annotation class DimensionClassifier(
 /**
  * Auxiliary classifier for scales. It is applied to [QuantityScale] fields.
  * This is used to override the default classification (e.g. using a config option downstream).
- * @param aliases Extra names for this auxiliary scale. It must be unique per dimension type.
+ * @param identifiers Override names for this auxiliary scale. These will be used as identifiers instead of [symbol]. Use this when the symbol cannot be typed (e.g. Å)
  * */
 @Target(AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class ScaleClassifier(
     val symbol: String,
-    vararg val aliases: String,
+    vararg val identifiers: String,
     val factor: Double = 1.0,
     val base: ScaleMultiples = ScaleMultiples.Base1000Standard
 )
@@ -471,7 +471,13 @@ inline fun <reified Unit> standardScale(factor: Double = 1.0) = SourceQuantitySc
 
 @DimensionClassifier("g", factor = 1000.0) interface Mass
 val KILOGRAM = standardScale<Mass>()
-val GRAM = KILOGRAM.sourceSub()
+@ScaleClassifier("g") val GRAM = KILOGRAM.sourceSub()
+@ScaleClassifier("gr") val GRAIN = KILOGRAM sourceAmplify 6.479891e-5
+@ScaleClassifier("oz") val OUNCE = KILOGRAM sourceAmplify 0.0283495231
+@ScaleClassifier("st") val STONE = KILOGRAM sourceAmplify 6.35029318
+@ScaleClassifier("lb") val POUND = KILOGRAM sourceAmplify 0.45359237
+@ScaleClassifier("t") val TON = KILOGRAM sourceAmplify 907.18474
+
 @ScaleClassifier("firkin") val FIRKIN = KILOGRAM sourceAmplify 40.8233
 
 @DimensionClassifier("Da") interface AtomicMass
@@ -488,7 +494,7 @@ val SECOND = standardScale<Time>()
 @ScaleClassifier("rel", "rels") val REL = SECOND sourceAmplify 1.2
 @ScaleClassifier("min") val MINUTE = SECOND sourceAmplify 60.0
 @ScaleClassifier("h") val HOUR = MINUTE sourceAmplify 60.0
-@ScaleClassifier("d", "day") val DAY = HOUR sourceAmplify 24.0
+@ScaleClassifier("d") val DAY = HOUR sourceAmplify 24.0
 @ScaleClassifier("fortnight") val FORTNIGHT = SECOND sourceAmplify 1209600.0
 
 @DimensionClassifier("Hz") interface Frequency
@@ -499,24 +505,56 @@ val METER = standardScale<Distance>()
 @ScaleClassifier("cm") val CENTIMETER = METER sourceReduce 100.0
 @ScaleClassifier("ft") val FOOT = METER sourceAmplify 0.3048
 @ScaleClassifier("in") val INCH = METER sourceAmplify 0.0254
-@ScaleClassifier("light-nanoseconds", "lns") val LIGHT_NANOSECONDS = CENTIMETER sourceAmplify 29.9792458
-@ScaleClassifier("attoparsec", "apc") val ATTO_PARSEC = CENTIMETER sourceAmplify 3.086
-@ScaleClassifier("metric foot", "mf") val METRIC_FOOT = (MILLI sourceCompose METER) sourceAmplify 300.0
+@ScaleClassifier("yd") val YARD = METER sourceAmplify 0.9144
+@ScaleClassifier("mi") val MILE = METER sourceAmplify 1609.344
+
+@ScaleClassifier("light-nanoseconds") val LIGHT_NANOSECONDS = CENTIMETER sourceAmplify 29.9792458
+@ScaleClassifier("attoparsec") val ATTO_PARSEC = CENTIMETER sourceAmplify 3.086
+@ScaleClassifier("metric foot") val METRIC_FOOT = (MILLI sourceCompose METER) sourceAmplify 300.0
 @ScaleClassifier("cubit") val CUBIT = CENTIMETER sourceAmplify  120.0
 @ScaleClassifier("furlong") val FURLONG = METER sourceAmplify 201.168
-@ScaleClassifier("Å", "A", "a", "angstrom") val ANGSTROM = METER sourceReduce 1e10
+@ScaleClassifier("football field") val AMERICAN_FOOTBALL_FIELD = METER sourceAmplify 91.44
+@ScaleClassifier("Å", "A") val ANGSTROM = METER sourceReduce 1e10
+
+@DimensionClassifier("K") interface Temperature
+val KELVIN = standardScale<Temperature>()
+@ScaleClassifier("°F", "F") val FAHRENHEIT = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(9.0 / 5.0, -459.67))
+@ScaleClassifier("Rk") val RANKINE = KELVIN sourceAmplify 0.555556 // Not R (Roentgen)
+@ScaleClassifier("°C", "C") val CELSIUS = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(1.0, -273.15))
+@ScaleClassifier("mG") val MILLIGRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(10.0, -2731.5))
+@ScaleClassifier("G") val GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, -2.7315))
+@ScaleClassifier("|G|") val ABSOLUTE_GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, 0.0))
 
 @DimensionClassifier("J") interface Energy
 val JOULE = standardScale<Energy>()
 @ScaleClassifier("BTU") val BTU = JOULE sourceAmplify 1055.05585262
-@ScaleClassifier("erg") val ERG = JOULE sourceAmplify 1e-7
+@ScaleClassifier("cal") val CALORIE = JOULE sourceAmplify 4.18400
+@ScaleClassifier("kcal") val KILOCALORIE = CALORIE.sourceAmp()
 @ScaleClassifier("Ws") val WATT_SECOND = JOULE
 @ScaleClassifier("Wmin") val WATT_MINUTE = WATT_SECOND sourceAmplify  60.0
 @ScaleClassifier("Wh") val WATT_HOUR = WATT_MINUTE sourceAmplify 60.0
+
+@ScaleClassifier("erg") val ERG = JOULE sourceAmplify 1e-7
 @ScaleClassifier("eV") val ELECTRON_VOLT = JOULE sourceAmplify  1.602176634e-19 // Serious precision issues? Hope not! :Fish_Smug:
 
 @DimensionClassifier("W") interface Power
 val WATT = standardScale<Power>()
+@ScaleClassifier("BTU/s") val BTU_PER_SECOND = WATT sourceAmplify 1055.05585
+@ScaleClassifier("cal/s") val CALORIE_PER_SECOND = WATT sourceAmplify 4.18400
+@ScaleClassifier("kcal/s") val KILOCALORIE_PER_SECOND = WATT sourceAmplify 4184.0
+@ScaleClassifier("hp") val HORSEPOWER = WATT sourceAmplify 745.699872
+
+@DimensionClassifier("g/m³", factor = 1000.0) interface Density
+val KILOGRAM_PER_METER3 = standardScale<Density>()
+@ScaleClassifier("g/cm³") val G_PER_CM3 = KILOGRAM_PER_METER3 sourceAmplify 1000.0
+@ScaleClassifier("g/L") val G_PER_L = KILOGRAM_PER_METER3
+
+@DimensionClassifier("m²") interface Area
+val METER2 = standardScale<Area>()
+
+@DimensionClassifier("m³") interface Volume
+val METER3 = standardScale<Volume>()
+@ScaleClassifier("L") val LITER = METER3.sourceSub()
 
 @DimensionClassifier("Bq") interface Radioactivity
 val BECQUEREL = standardScale<Radioactivity>()
@@ -530,8 +568,8 @@ val GRAY = standardScale<RadiationAbsorbedDose>()
 val SIEVERT = standardScale<RadiationDoseEquivalent>()
 @ScaleClassifier("rem") val REM = SIEVERT sourceReduce 100.0
 
-@DimensionClassifier("C/kg")
-interface RadiationExposure val COULOMB_PER_KILOGRAM = standardScale<RadiationExposure>()
+@DimensionClassifier("C/kg") interface RadiationExposure
+val COULOMB_PER_KILOGRAM = standardScale<RadiationExposure>()
 @ScaleClassifier("R") val ROENTGEN = COULOMB_PER_KILOGRAM sourceReduce 3875.96899225
 
 @DimensionClassifier("1/m") interface ReciprocalDistance
@@ -541,11 +579,6 @@ val RECIP_CENTIMETER = RECIP_METER sourceAmplify 100.0
 interface ArealDensity
 val KILOGRAM_PER_METER2 = standardScale<ArealDensity>()
 val GRAM_PER_CENTIMETER2 = KILOGRAM_PER_METER2 sourceAmplify 10.0
-
-@DimensionClassifier("g/m³", factor = 1000.0) interface Density
-val KILOGRAM_PER_METER3 = standardScale<Density>()
-@ScaleClassifier("g/cm³")val G_PER_CM3 = KILOGRAM_PER_METER3 sourceAmplify 1000.0
-@ScaleClassifier("g/L")val G_PER_L = KILOGRAM_PER_METER3
 
 interface ReciprocalArealDensity
 val METER2_PER_KILOGRAM = standardScale<ReciprocalArealDensity>()
@@ -559,22 +592,6 @@ val MOLE = standardScale<Substance>()
 
 interface MolarConcentration
 val MOLE_PER_METER3 = standardScale<MolarConcentration>()
-
-@DimensionClassifier("m²") interface Area
-val METER2 = standardScale<Area>()
-
-@DimensionClassifier("m³") interface Volume
-val METER3 = standardScale<Volume>()
-@ScaleClassifier("L") val LITER = METER3.sourceSub()
-
-@DimensionClassifier("K") interface Temperature
-val KELVIN = standardScale<Temperature>()
-@ScaleClassifier("°F", "F", "f", "fahrenheit") val FAHRENHEIT = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(9.0 / 5.0, -459.67))
-@ScaleClassifier("Rk") val RANKINE = KELVIN sourceAmplify 0.555556 // Not R (Roentgen)
-@ScaleClassifier("°C") val CELSIUS = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(1.0, -273.15))
-@ScaleClassifier("mG") val MILLIGRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(10.0, -2731.5))
-@ScaleClassifier("G") val GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, -2.7315))
-@ScaleClassifier("|G|") val ABSOLUTE_GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, 0.0))
 
 @DimensionClassifier("J/kgK") interface SpecificHeatCapacity
 val JOULE_PER_KILOGRAM_KELVIN = standardScale<SpecificHeatCapacity>()
@@ -653,7 +670,7 @@ val AUXILIARY_CLASSIFIERS: Map<Class<*>, MultiMap<ScaleRef<*>, String>> = run {
 
             val auxiliaries = map.getOrPut(scale.dimensionType) { MutableSetMapMultiMap() }
 
-            listOf(annotation.symbol).plus(annotation.aliases).forEach { identifier ->
+            listOf(annotation.symbol).plus(annotation.identifiers).forEach { identifier ->
                 @Suppress("UNCHECKED_CAST")
                 auxiliaries[property as ScaleRef<*>].add(identifier)
             }
