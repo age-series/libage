@@ -47,9 +47,9 @@ data class Scale(val factor: Double, val base: Double) {
  * [Scale], parameterized by [Unit], aligns with the physical attribute measured by the scale (such as distance, time, and so forth).
  * Notably, [Unit] remains distinct from the [scale]; for instance, [Distance] can be measured in [METER]s, feet, dragon tails, american football fields, and other units.
  * It is important to recognize that [Unit] functions merely as a compiler mechanism and holds no inherent functional significance.
- * @param dimensionType The class of the *symbolic interface* [Unit].
+ * @param dimensionType The class of the *symbolic interface* [Unit]. This is the same for all auxiliary units.
  * */
-open class QuantityScale<Unit>(internal val dimensionType: Class<*>, val scale: Scale) {
+open class QuantityScale<Unit>(val dimensionType: Class<*>, val scale: Scale) {
     val factor get() = scale.factor
 
     /**
@@ -273,6 +273,40 @@ class QuantityArray<Unit>(val backing: DoubleArray) {
  * The chosen scale factor is inserted into the designated position marked by '#' within the unit string.
  * If '#' does not exist, it will be implied that the multiple shall be inserted at the start of the string.
  * [symbol] can also be left empty (you'll still get the number in formatted form and suffixed with the multiple).
+ * Examples:
+ * ```
+ * classifyIntoMultiple(
+ *      value = 1500.0,
+ *      base = 1000.0,
+ *      map = listOf(1.0 to "kilo"),
+ *      symbol = "meters"
+ * ) // 1.5 kilometers
+ *
+ * classifyIntoMultiple(
+ *       value = 10.0,
+ *       base = 1000.0,
+ *       map = listOf(1.0 to "kilo"),
+ *       symbol = "meters"
+ *  ) // 10.0 meters (because inferFist is true by default)
+ *
+ *  classifyIntoMultiple(
+ *       value = 10.0,
+ *       base = 1000.0,
+ *       map = listOf(1.0 to "kilo"),
+ *       symbol = "meters",
+ *       inferFist = false
+ *  ) // 0.01 kilometers (because inferFist is false)
+ *
+ * classifyIntoMultiple(
+ *      value = 10.0,
+ *      base = 1000.0,
+ *      map = listOf(1.0 to "kilo", 0.0 to "*"),
+ *      symbol = "meters",
+ *      inferFist = false
+ * ) // 10.0 *meters
+ *
+ * // Trying out non-integer magnitudes is left as an exercise to the reader.
+ * ```
  * @param value The value to classify.
  * @param base The base to use. Usually, this is 10 or 1000.
  * @param map A map of magnitudes *to* multiplier. Not actually a [Map] because the algorithm scans the entire map to find the best multiplier (justified because we don't care)
@@ -280,9 +314,9 @@ class QuantityArray<Unit>(val backing: DoubleArray) {
  * @param decimals The number of decimals to round the final value to.
  * @param inferFirst If true, no multiple will be prepended to the [symbol], if the value is around magnitude 0.
  * */
-fun classify(value: Double, base: Double, map: List<Pair<Double, String>>, symbol: String, decimals: Int = 2, inferFirst: Boolean = true) : String {
+fun classifyIntoMultiple(value: Double, base: Double, map: List<Pair<Double, String>>, symbol: String, decimals: Int = 2, inferFirst: Boolean = true) : String {
     if(value < 0.0) {
-        return "-${classify(-value, base, map, symbol)}"
+        return "-${classifyIntoMultiple(-value, base, map, symbol)}"
     }
 
     val magnitude = log(value, base)
@@ -319,7 +353,7 @@ fun classify(value: Double, base: Double, map: List<Pair<Double, String>>, symbo
  * @param value The classification base.
  * @param multiples Impromptu map of magnitudes to the desired multiple.
  * */
-enum class ClassificationBase(val value: Double, val multiples: List<Pair<Double, String>>) {
+enum class ScaleMultiples(val value: Double, val multiples: List<Pair<Double, String>>) {
     Base1000Standard(
         1000.0,
         listOf(
@@ -403,14 +437,14 @@ enum class ClassificationBase(val value: Double, val multiples: List<Pair<Double
 /**
  * Classifies this physical dimension with the [symbol] (e.g. *"#m"* for meters). The symbol *#* is where the multiple will be placed.
  * @param factor An adjustment factor for special cases. E.G. for [KILOGRAM], this factor is set to *1000* and the symbol is "g".
- * @param base The base to use. This specifies the prefixes (e.g. "kilo", "mega", ...) to place in front of the [symbol] when [classify]ing.
+ * @param base The base to use. This specifies the prefixes (e.g. "kilo", "mega", ...) to place in front of the [symbol] when [classifyIntoMultiple]ing.
  * */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class Classify(
+annotation class DimensionClassifier(
     val symbol: String,
     val factor: Double = 1.0,
-    val base: ClassificationBase = ClassificationBase.Base1000Standard
+    val base: ScaleMultiples = ScaleMultiples.Base1000Standard
 )
 
 /**
@@ -420,28 +454,12 @@ annotation class Classify(
  * */
 @Target(AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class Auxiliary(
+annotation class ScaleClassifier(
     val symbol: String,
     vararg val aliases: String,
     val factor: Double = 1.0,
-    val base: ClassificationBase = ClassificationBase.Base1000Standard
+    val base: ScaleMultiples = ScaleMultiples.Base1000Standard
 )
-
-/**
- * Classifies this quantity into a *multiple* using the [classify] API, in the standard scale.
- * If [T] is annotated with [Classify], the symbol and base specified in the annotation will be used.
- * Otherwise, [ClassificationBase.Base1000Standard] will be used and no unit symbol will be added.
- * */
-inline fun<reified T> Quantity<T>.classify() : String {
-    val annotation = T::class.java.getDeclaredAnnotation(Classify::class.java)
-
-    return if(annotation == null) {
-        classify(!this, ClassificationBase.Base1000Standard.value, ClassificationBase.Base1000Standard.multiples, "")
-    }
-    else {
-        classify(!this * annotation.factor, annotation.base.value, annotation.base.multiples, annotation.symbol)
-    }
-}
 
 /**
  * Defines the standard scale of the [Unit] (a scale with factor 1).
@@ -451,12 +469,12 @@ inline fun <reified Unit> standardScale(factor: Double = 1.0) = SourceQuantitySc
     Scale(factor, 0.0)
 )
 
-@Classify("g", factor = 1000.0) interface Mass
+@DimensionClassifier("g", factor = 1000.0) interface Mass
 val KILOGRAM = standardScale<Mass>()
 val GRAM = KILOGRAM.sourceSub()
-@Auxiliary("firkin") val FIRKIN = KILOGRAM sourceAmplify 40.8233
+@ScaleClassifier("firkin") val FIRKIN = KILOGRAM sourceAmplify 40.8233
 
-@Classify("Da") interface AtomicMass
+@DimensionClassifier("Da") interface AtomicMass
 val DALTON = standardScale<AtomicMass>()
 
 /**
@@ -465,58 +483,58 @@ val DALTON = standardScale<AtomicMass>()
  * */
 fun Quantity<AtomicMass>.asStandardMass() = Quantity(!this * 1.66053906660e-27, KILOGRAM)
 
-@Classify("s") interface Time
+@DimensionClassifier("s") interface Time
 val SECOND = standardScale<Time>()
-@Auxiliary("rel", "rels") val REL = SECOND sourceAmplify 1.2
-@Auxiliary("min") val MINUTE = SECOND sourceAmplify 60.0
-@Auxiliary("h") val HOUR = MINUTE sourceAmplify 60.0
-@Auxiliary("d", "day") val DAY = HOUR sourceAmplify 24.0
-@Auxiliary("fortnight") val FORTNIGHT = SECOND sourceAmplify 1209600.0
+@ScaleClassifier("rel", "rels") val REL = SECOND sourceAmplify 1.2
+@ScaleClassifier("min") val MINUTE = SECOND sourceAmplify 60.0
+@ScaleClassifier("h") val HOUR = MINUTE sourceAmplify 60.0
+@ScaleClassifier("d", "day") val DAY = HOUR sourceAmplify 24.0
+@ScaleClassifier("fortnight") val FORTNIGHT = SECOND sourceAmplify 1209600.0
 
-@Classify("Hz") interface Frequency
+@DimensionClassifier("Hz") interface Frequency
 val HERTZ = standardScale<Frequency>()
 
-@Classify("m") interface Distance
+@DimensionClassifier("m") interface Distance
 val METER = standardScale<Distance>()
-@Auxiliary("cm") val CENTIMETER = METER sourceReduce 100.0
-@Auxiliary("ft") val FOOT = METER sourceAmplify 0.3048
-@Auxiliary("in") val INCH = METER sourceAmplify 0.0254
-@Auxiliary("light-nanoseconds", "lns") val LIGHT_NANOSECONDS = CENTIMETER sourceAmplify 29.9792458
-@Auxiliary("attoparsec", "apc") val ATTO_PARSEC = CENTIMETER sourceAmplify 3.086
-@Auxiliary("metric foot", "mf") val METRIC_FOOT = (MILLI sourceCompose METER) sourceAmplify 300.0
-@Auxiliary("cubit") val CUBIT = CENTIMETER sourceAmplify  120.0
-@Auxiliary("furlong") val FURLONG = METER sourceAmplify 201.168
-@Auxiliary("Å", "A", "a", "angstrom") val ANGSTROM = METER sourceReduce 1e10
+@ScaleClassifier("cm") val CENTIMETER = METER sourceReduce 100.0
+@ScaleClassifier("ft") val FOOT = METER sourceAmplify 0.3048
+@ScaleClassifier("in") val INCH = METER sourceAmplify 0.0254
+@ScaleClassifier("light-nanoseconds", "lns") val LIGHT_NANOSECONDS = CENTIMETER sourceAmplify 29.9792458
+@ScaleClassifier("attoparsec", "apc") val ATTO_PARSEC = CENTIMETER sourceAmplify 3.086
+@ScaleClassifier("metric foot", "mf") val METRIC_FOOT = (MILLI sourceCompose METER) sourceAmplify 300.0
+@ScaleClassifier("cubit") val CUBIT = CENTIMETER sourceAmplify  120.0
+@ScaleClassifier("furlong") val FURLONG = METER sourceAmplify 201.168
+@ScaleClassifier("Å", "A", "a", "angstrom") val ANGSTROM = METER sourceReduce 1e10
 
-@Classify("J") interface Energy
+@DimensionClassifier("J") interface Energy
 val JOULE = standardScale<Energy>()
-@Auxiliary("BTU") val BTU = JOULE sourceAmplify 1055.05585262
-@Auxiliary("erg") val ERG = JOULE sourceAmplify 1e-7
-@Auxiliary("Ws") val WATT_SECOND = JOULE
-@Auxiliary("Wmin") val WATT_MINUTE = WATT_SECOND sourceAmplify  60.0
-@Auxiliary("Wh") val WATT_HOUR = WATT_MINUTE sourceAmplify 60.0
-@Auxiliary("eV") val ELECTRON_VOLT = JOULE sourceAmplify  1.602176634e-19 // Serious precision issues? Hope not! :Fish_Smug:
+@ScaleClassifier("BTU") val BTU = JOULE sourceAmplify 1055.05585262
+@ScaleClassifier("erg") val ERG = JOULE sourceAmplify 1e-7
+@ScaleClassifier("Ws") val WATT_SECOND = JOULE
+@ScaleClassifier("Wmin") val WATT_MINUTE = WATT_SECOND sourceAmplify  60.0
+@ScaleClassifier("Wh") val WATT_HOUR = WATT_MINUTE sourceAmplify 60.0
+@ScaleClassifier("eV") val ELECTRON_VOLT = JOULE sourceAmplify  1.602176634e-19 // Serious precision issues? Hope not! :Fish_Smug:
 
-@Classify("W") interface Power
+@DimensionClassifier("W") interface Power
 val WATT = standardScale<Power>()
 
-@Classify("Bq") interface Radioactivity
+@DimensionClassifier("Bq") interface Radioactivity
 val BECQUEREL = standardScale<Radioactivity>()
-@Auxiliary("Ci") val CURIE = (GIGA sourceCompose BECQUEREL) sourceAmplify 37.0
+@ScaleClassifier("Ci") val CURIE = (GIGA sourceCompose BECQUEREL) sourceAmplify 37.0
 
-@Classify("Gy") interface RadiationAbsorbedDose
+@DimensionClassifier("Gy") interface RadiationAbsorbedDose
 val GRAY = standardScale<RadiationAbsorbedDose>()
-@Auxiliary("rad") val RAD = GRAY sourceReduce 100.0
+@ScaleClassifier("rad") val RAD = GRAY sourceReduce 100.0
 
-@Classify("Sv") interface RadiationDoseEquivalent
+@DimensionClassifier("Sv") interface RadiationDoseEquivalent
 val SIEVERT = standardScale<RadiationDoseEquivalent>()
-@Auxiliary("rem") val REM = SIEVERT sourceReduce 100.0
+@ScaleClassifier("rem") val REM = SIEVERT sourceReduce 100.0
 
-@Classify("C/kg")
+@DimensionClassifier("C/kg")
 interface RadiationExposure val COULOMB_PER_KILOGRAM = standardScale<RadiationExposure>()
-@Auxiliary("R") val ROENTGEN = COULOMB_PER_KILOGRAM sourceReduce 3875.96899225
+@ScaleClassifier("R") val ROENTGEN = COULOMB_PER_KILOGRAM sourceReduce 3875.96899225
 
-@Classify("1/m") interface ReciprocalDistance
+@DimensionClassifier("1/m") interface ReciprocalDistance
 val RECIP_METER = standardScale<ReciprocalDistance>()
 val RECIP_CENTIMETER = RECIP_METER sourceAmplify 100.0
 
@@ -524,97 +542,97 @@ interface ArealDensity
 val KILOGRAM_PER_METER2 = standardScale<ArealDensity>()
 val GRAM_PER_CENTIMETER2 = KILOGRAM_PER_METER2 sourceAmplify 10.0
 
-@Classify("g/m³", factor = 1000.0) interface Density
+@DimensionClassifier("g/m³", factor = 1000.0) interface Density
 val KILOGRAM_PER_METER3 = standardScale<Density>()
-@Auxiliary("g/cm³")val G_PER_CM3 = KILOGRAM_PER_METER3 sourceAmplify 1000.0
-@Auxiliary("g/L")val G_PER_L = KILOGRAM_PER_METER3
+@ScaleClassifier("g/cm³")val G_PER_CM3 = KILOGRAM_PER_METER3 sourceAmplify 1000.0
+@ScaleClassifier("g/L")val G_PER_L = KILOGRAM_PER_METER3
 
 interface ReciprocalArealDensity
 val METER2_PER_KILOGRAM = standardScale<ReciprocalArealDensity>()
 val CENTIMETER2_PER_GRAM = METER2_PER_KILOGRAM sourceReduce 10.0
 
-@Classify("m/s") interface Velocity
+@DimensionClassifier("m/s") interface Velocity
 val METER_PER_SECOND = standardScale<Velocity>()
 
-@Classify("mol") interface Substance
+@DimensionClassifier("mol") interface Substance
 val MOLE = standardScale<Substance>()
 
 interface MolarConcentration
 val MOLE_PER_METER3 = standardScale<MolarConcentration>()
 
-@Classify("m²") interface Area
+@DimensionClassifier("m²") interface Area
 val METER2 = standardScale<Area>()
 
-@Classify("m³") interface Volume
+@DimensionClassifier("m³") interface Volume
 val METER3 = standardScale<Volume>()
-@Auxiliary("L") val LITER = METER3.sourceSub()
+@ScaleClassifier("L") val LITER = METER3.sourceSub()
 
-@Classify("K") interface Temperature
+@DimensionClassifier("K") interface Temperature
 val KELVIN = standardScale<Temperature>()
-@Auxiliary("°F", "F", "f", "fahrenheit") val FAHRENHEIT = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(9.0 / 5.0, -459.67))
-@Auxiliary("Rk") val RANKINE = KELVIN sourceAmplify 0.555556 // Not R (Roentgen)
-@Auxiliary("°C") val CELSIUS = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(1.0, -273.15))
-@Auxiliary("mG") val MILLIGRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(10.0, -2731.5))
-@Auxiliary("G") val GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, -2.7315))
-@Auxiliary("|G|") val ABSOLUTE_GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, 0.0))
+@ScaleClassifier("°F", "F", "f", "fahrenheit") val FAHRENHEIT = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(9.0 / 5.0, -459.67))
+@ScaleClassifier("Rk") val RANKINE = KELVIN sourceAmplify 0.555556 // Not R (Roentgen)
+@ScaleClassifier("°C") val CELSIUS = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(1.0, -273.15))
+@ScaleClassifier("mG") val MILLIGRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(10.0, -2731.5))
+@ScaleClassifier("G") val GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, -2.7315))
+@ScaleClassifier("|G|") val ABSOLUTE_GRADE = SourceQuantityScale<Temperature>(Temperature::class.java, Scale(0.01, 0.0))
 
-@Classify("J/kgK") interface SpecificHeatCapacity
+@DimensionClassifier("J/kgK") interface SpecificHeatCapacity
 val JOULE_PER_KILOGRAM_KELVIN = standardScale<SpecificHeatCapacity>()
-@Auxiliary("J/gK") val JOULE_PER_GRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
-@Auxiliary("kJ/kgK") val KILOJOULE_PER_KILOGRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
+@ScaleClassifier("J/gK") val JOULE_PER_GRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
+@ScaleClassifier("kJ/kgK") val KILOJOULE_PER_KILOGRAM_KELVIN = JOULE_PER_KILOGRAM_KELVIN.sourceAmp()
 
-@Classify("J/K") interface HeatCapacity
+@DimensionClassifier("J/K") interface HeatCapacity
 val JOULE_PER_KELVIN = standardScale<HeatCapacity>()
 
-@Classify("W/mK") interface ThermalConductivity
+@DimensionClassifier("W/mK") interface ThermalConductivity
 val WATT_PER_METER_KELVIN = standardScale<ThermalConductivity>()
 
-@Classify("W/K") interface ThermalConductance
+@DimensionClassifier("W/K") interface ThermalConductance
 val WATT_PER_KELVIN = standardScale<ThermalConductance>()
 
-@Classify("Ωm") interface ElectricalResistivity
+@DimensionClassifier("Ωm") interface ElectricalResistivity
 val OHM_METER = standardScale<ElectricalResistivity>()
 
-@Classify("kg/mol") interface MolecularWeight
+@DimensionClassifier("kg/mol") interface MolecularWeight
 val KILOGRAM_PER_MOLE = standardScale<MolecularWeight>()
-@Auxiliary("g/mol") val GRAM_PER_MOLE = KILOGRAM_PER_MOLE.sourceSub()
+@ScaleClassifier("g/mol") val GRAM_PER_MOLE = KILOGRAM_PER_MOLE.sourceSub()
 
-@Classify("Pa") interface Pressure
+@DimensionClassifier("Pa") interface Pressure
 val PASCAL = standardScale<Pressure>()
-@Auxiliary("Atm") val ATMOSPHERE = PASCAL sourceAmplify 9.86923e-6
+@ScaleClassifier("Atm") val ATMOSPHERE = PASCAL sourceAmplify 9.86923e-6
 
-@Classify("W/m²") interface Intensity
+@DimensionClassifier("W/m²") interface Intensity
 val WATT_PER_METER2 = standardScale<Intensity>()
 
-@Classify("V") interface Potential
+@DimensionClassifier("V") interface Potential
 val VOLT = standardScale<Potential>()
 
-@Classify("A") interface Current
+@DimensionClassifier("A") interface Current
 val AMPERE = standardScale<Current>()
 
-@Classify("Ω") interface Resistance
+@DimensionClassifier("Ω") interface Resistance
 val OHM = standardScale<Resistance>()
 
-@Classify("F") interface Capacitance
+@DimensionClassifier("F") interface Capacitance
 val FARAD = standardScale<Capacitance>()
 
-@Classify("S") interface ElectricalConductance
+@DimensionClassifier("S") interface ElectricalConductance
 val SIEMENS = standardScale<ElectricalConductance>()
 
-@Classify("C") interface ElectricalCharge
+@DimensionClassifier("C") interface ElectricalCharge
 val COULOMB = standardScale<ElectricalCharge>()
 
-@Classify("H") interface Inductance
+@DimensionClassifier("H") interface Inductance
 val HENRY = standardScale<Inductance>()
 
-@Classify("J/kg") interface MassEnergyDensity
+@DimensionClassifier("J/kg") interface MassEnergyDensity
 val JOULE_PER_KILOGRAM = standardScale<MassEnergyDensity>()
 
-@Classify("J/m³") interface VolumeEnergyDensity
+@DimensionClassifier("J/m³") interface VolumeEnergyDensity
 val JOULE_PER_METER3 = standardScale<VolumeEnergyDensity>()
 
 /**
- * Gets a map of dimension type (dimension interface) to a multimap of scale reference (property holding the [QuantityScale]) and its declared [Auxiliary]ers.
+ * Gets a map of dimension type (dimension interface) to a multimap of scale reference (property holding the [QuantityScale]) and its declared [ScaleClassifier]ers.
  * */
 val AUXILIARY_CLASSIFIERS = run {
     val map = LinkedHashMap<Class<*>, MutableSetMapMultiMap<ScaleRef<*>, String>>()
@@ -625,10 +643,10 @@ val AUXILIARY_CLASSIFIERS = run {
             val property = field.kotlinProperty
                 ?: return@forEach
 
-            val annotation = property.annotations.firstOrNull { it is Auxiliary }
+            val annotation = property.annotations.firstOrNull { it is ScaleClassifier }
                 ?: return@forEach
 
-            annotation as Auxiliary
+            annotation as ScaleClassifier
 
             val scale = checkNotNull(property.getter.call() as? QuantityScale<*>) {
                 "Failed to fetch $property"
@@ -650,48 +668,94 @@ val AUXILIARY_CLASSIFIERS = run {
 
 /**
  * Gets a map of dimension type classes (dimension interface).
+ * Useful as an ID for config values.
+ * Examples values:
+ * ```
+ * Temperature::class.java [the Class] <-> "Temperature" [the human-readable String]
+ * ```
  * */
 val DIMENSION_TYPES = AUXILIARY_CLASSIFIERS.keys.associateWithBi { it.sourceName() }
 
 /**
- * Classifies this quantity with the specified auxiliary unit.
- * If the auxiliary does not exist, the base classification will be used.
+ * Classifies the [value] as a quantity on the scale defined by [dimensionType] (class of the dimension interface).
+ * If the dimension interface has [DimensionClassifier], the options from the annotation will be used.
+ * Otherwise, [ScaleMultiples.Base1000Standard] will be used and no unit symbol will be added.
+ * Examples:
+ * ```
+ * classify(Temperature::class.java, !Quantity(0.0, CELSIUS)) // 273.15 K
+ * ```
  * */
-inline fun<reified T> Quantity<T>.classify(override: String) : String {
-    val classifiers = AUXILIARY_CLASSIFIERS[T::class.java]
-        ?: return this.classify()
+fun classify(dimensionType: Class<*>, value: Double) : String {
+    val annotation = dimensionType.getDeclaredAnnotation(DimensionClassifier::class.java)
 
-    val scale = classifiers.keys.firstOrNull {
-        classifiers[it].contains(override)
-    }
-
-    return if(scale == null) {
-        this.classify()
+    return if(annotation == null) {
+        classifyIntoMultiple(
+            value,
+            ScaleMultiples.Base1000Standard.value,
+            ScaleMultiples.Base1000Standard.multiples,
+            ""
+        )
     }
     else {
-        val annotation = scale::annotations.get().firstOrNull { it is Auxiliary } as? Auxiliary
-
-        return if(annotation == null) {
-            this.classify() // Weird
-        }
-        else {
-            @Suppress("UNCHECKED_CAST")
-            classify((this..(scale.getter.call() as QuantityScale<T>)) * annotation.factor, annotation.base.value, annotation.base.multiples, annotation.symbol)
-        }
+        classifyIntoMultiple(
+            value * annotation.factor,
+            annotation.base.value,
+            annotation.base.multiples,
+            annotation.symbol
+        )
     }
 }
 
 /**
- * Map of unit dimension to override identifier. The classification override is as specified in [Auxiliary.aliases]
+ * Classifies this quantity into a *multiple* using the [classify], passing in [T] as dimension interface.
+ * Examples:
+ * ```
+ * val quantity = Quantity(10, KILO * METER)
+ * quantity.classify() // 10 km
+ * ```
  * */
-class AuxiliaryClassifiers(val overrides: Map<String, String>) {
-    inline fun<reified T> classify(quantity: Quantity<T>) : String {
-        val override = overrides[sourceName<T>()]
+inline fun<reified T> Quantity<T>.classify() = classify(T::class.java, !this)
 
-        return if(override == null) {
-            quantity.classify()
-        } else {
-            quantity.classify(override)
-        }
+/**
+ * Classifies the [value] as a quantity on the scale defined by [scaleRef] (a defined secondary scale).
+ * If the field has [ScaleClassifier], the options from the annotation will be used.
+ * Otherwise, as a fallback, the value will be classified using [classify] (classification based on the dimension interface).
+ * This normally shouldn't happen if I don't forget to add @Auxiliary to the scales.
+ *
+ * Examples:
+ * ```
+ * classifyAuxiliary(::FOOT, !Quantity(10.0, KILO * METER)) // show in feet
+ * classifyAuxiliary(::METER, !Quantity(10.0, KILO * METER)) // METER does not have @Auxiliary, so it will just show in.. meters (default scale)
+ * classifyAuxiliary(selectedScale, !Quantity(10.0, KILO * METER)) // selectedScale could something from AUXILIARY_CLASSIFIERS
+ * ```
+ * */
+fun classifyAuxiliary(scaleRef: ScaleRef<*>, value: Double) : String {
+    val annotation = scaleRef::annotations.get().firstOrNull { it is ScaleClassifier } as? ScaleClassifier
+    val quantityScale = scaleRef.call()
+
+    return if(annotation == null) {
+        // Fallback - classify in standard scale:
+        classify(quantityScale.dimensionType, value)
+    }
+    else {
+        classifyIntoMultiple(
+            quantityScale.scale.map(value) * annotation.factor,
+            annotation.base.value,
+            annotation.base.multiples,
+            annotation.symbol
+        )
     }
 }
+
+/**
+ * Classifies this quantity with the specified auxiliary unit.
+ * If the auxiliary does not exist, the base classification will be used.
+ * Examples:
+ * ```
+ * val quantity = Quantity(10.0, KILO * METER)
+ * quantity.classifyAuxiliary(::FEET) // show in feet
+ * quantity.classifyAuxiliary(::METER) // METER does not have @Auxiliary, so it will just show in.. meters (default scale)
+ * quantity.classifyAuxiliary(::KELVIN) // Compilation error (type-safe, based on the dimension interface)
+ * ```
+ * */
+inline fun<reified T> Quantity<T>.classifyAuxiliary(scale: ScaleRef<T>) = classifyAuxiliary(scale, !this)
