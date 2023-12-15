@@ -634,10 +634,9 @@ val JOULE_PER_METER3 = standardScale<VolumeEnergyDensity>()
 /**
  * Gets a map of dimension type (dimension interface) to a multimap of scale reference (property holding the [QuantityScale]) and its declared [ScaleClassifier]ers.
  * */
-val AUXILIARY_CLASSIFIERS = run {
+val AUXILIARY_CLASSIFIERS: Map<Class<*>, MultiMap<ScaleRef<*>, String>> = run {
     val map = LinkedHashMap<Class<*>, MutableSetMapMultiMap<ScaleRef<*>, String>>()
 
-    // get getters:
     SELF.declaredFields.forEach { field ->
         if((QuantityScale::class.java).isAssignableFrom(field.type)) {
             val property = field.kotlinProperty
@@ -661,9 +660,7 @@ val AUXILIARY_CLASSIFIERS = run {
         }
     }
 
-    map.keys.associateWith {
-        ImmutableMultiMapView(map[it]!!)
-    }
+    map
 }
 
 /**
@@ -674,7 +671,24 @@ val AUXILIARY_CLASSIFIERS = run {
  * Temperature::class.java [the Class] <-> "Temperature" [the human-readable String]
  * ```
  * */
-val DIMENSION_TYPES = AUXILIARY_CLASSIFIERS.keys.associateWithBi { it.sourceName() }
+val DIMENSION_TYPES = run {
+    val dimensionTypes = HashSet<Class<*>>()
+
+    SELF.declaredFields.forEach { field ->
+        if((QuantityScale::class.java).isAssignableFrom(field.type)) {
+            val property = field.kotlinProperty
+                ?: return@forEach
+
+            val scale = checkNotNull(property.getter.call() as? QuantityScale<*>) {
+                "Failed to fetch $property"
+            }
+
+            dimensionTypes.add(scale.dimensionType)
+        }
+    }
+
+    dimensionTypes
+}.associateWithBi { it.sourceName() }
 
 /**
  * Classifies the [value] as a quantity on the scale defined by [dimensionType] (class of the dimension interface).
