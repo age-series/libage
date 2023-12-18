@@ -101,13 +101,13 @@ val compileArgs = listOf(
 
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
-    jvmTarget = "8"
+    jvmTarget = "1.8"
     freeCompilerArgs += compileArgs
 }
 
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "8"
+    jvmTarget = "1.8"
     freeCompilerArgs += compileArgs
 }
 
