@@ -96,16 +96,16 @@ defaultTasks = mutableListOf("build", "test")
 
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
-    jvmTarget = "17"
+    jvmTarget = "8"
 }
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "17"
+    jvmTarget = "8"
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
+        languageVersion.set(JavaLanguageVersion.of(8))
     }
 }
 
