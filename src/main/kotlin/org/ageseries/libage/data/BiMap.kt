@@ -57,7 +57,7 @@ interface MutableBiMap<F, B>: BiMap<F, B> {
      * the guarantees above.
      */
     /**
-     * Add a bijection from [f] to [b], returning true iff some bijection had to be replaced.
+     * Add a bijection from [f] to [b], returning true if some bijection had to be replaced.
      */
     fun addOrReplace(f: F, b: B): Boolean
 
@@ -65,8 +65,14 @@ interface MutableBiMap<F, B>: BiMap<F, B> {
      * Add a bijection from [f] to [b]. If this replaces some other bijection, raise an error.
      */
     fun add(f: F, b: B) {
-        if(forward[f] != null || backward[b] != null) error("would replace a bijection")
-        addOrReplace(f, b)  // assert not this
+        val existingF = forward[f]
+        val existingB = backward[b]
+
+        if(existingF != null || existingB != null) {
+            error("Associating $f and $b would replace $existingF $existingB")
+        }
+
+        addOrReplace(f, b)
     }
 
     /**
@@ -92,6 +98,20 @@ interface MutableBiMap<F, B>: BiMap<F, B> {
     fun clear() {
         forward.keys.toList().forEach { removeForward(it) }
     }
+}
+
+/**
+ * Bijectively associates the keys with values selected using [valueSelector].
+ * Similar to Kotlin's [associateWith].
+ * */
+inline fun <K, V> Iterable<K>.associateWithBi(valueSelector: (K) -> V): BiMap<K, V> {
+    val result = mutableBiMapOf<K, V>()
+
+    this.forEach { k ->
+        result.add(k, valueSelector(k))
+    }
+
+    return result
 }
 
 /**
@@ -139,17 +159,24 @@ class MutableMapPairBiMap<F, B>(pairs: Iterator<Pair<F, B>>): MutableBiMap<F, B>
         forward.clear()
         backward.clear()
     }
+
+    override fun toString() = buildString {
+        forward.forEach { (f, b) ->
+            this.appendLine("$f <-> $b")
+        }
+    }
 }
 
 /**
  * An immutable view of a realized [MutableBiMap].
  */
 @JvmInline
-value class ImmutableBiMapView<F, B>(val inner: MutableBiMap<F, B>): BiMap<F, B> {
+value class ImmutableBiMapView<F, B>(private val inner: MutableBiMap<F, B>): BiMap<F, B> {
     override val forward: Map<F, B>
-        inline get() = inner.forward
+        get() = inner.forward
+
     override val backward: Map<B, F>
-        inline get() = inner.backward
+        get() = inner.backward
 }
 
 /**

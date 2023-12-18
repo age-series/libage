@@ -15,6 +15,7 @@ internal class DualTest {
 
     private fun rngNz() = random.nextDouble(0.5, 10.0) * snz(random.nextDouble(-1.0, 1.0))
 
+    @OptIn(UnsafeDualAPI::class)
     @Test
     fun constructors() {
         assertEquals(Dual(listOf(1.0, 2.0, 3.0)), Dual.of(1.0, 2.0, 3.0))
@@ -26,14 +27,73 @@ internal class DualTest {
         assertEquals(Dual.const(10.0, 1), Dual.of(10.0))
         assertEquals(Dual.const(10.0, 2), Dual.of(10.0, 0.0))
         assertEquals(Dual.const(10.0, 3), Dual.of(10.0, 0.0, 0.0))
-        assertEquals(Dual.castFromArray(doubleArrayOf(1.0, 2.0, 3.0)), Dual.of(1.0, 2.0, 3.0))
+        assertEquals(Dual.wrapUnsafe(doubleArrayOf(1.0, 2.0, 3.0)), Dual.of(1.0, 2.0, 3.0))
         assertEquals(Dual(Dual.of(1.0, 2.0), Dual.of(3.0, 4.0)), Dual.of(1.0, 2.0, 3.0, 4.0))
         assertEquals(Dual(Dual.empty, Dual.of(3.0, 4.0)), Dual.of(3.0, 4.0))
         assertEquals(Dual(Dual.of(1.0, 2.0), Dual.empty), Dual.of(1.0, 2.0))
         assertEquals(Dual(Dual.empty, Dual.empty), Dual.empty)
         assertEquals(Dual(listOf(1.0, 2.0), listOf(3.0, 4.0)), Dual.of(1.0, 2.0, 3.0, 4.0))
+        assertEquals(Dual.wrapUnsafe(doubleArrayOf(1.0, 2.0, 3.0)), Dual.of(1.0, 2.0, 3.0))
+        val a = doubleArrayOf(1.0, 2.0, 3.0)
+        assertTrue(Dual.unwrapUnsafe(Dual.wrapUnsafe(a)) === a)
     }
 
+    @Test
+    fun unary() {
+        range { _, xDual ->
+            areEqual(xDual, +xDual, (1.0) * xDual, xDual * (1.0), Dual.const(1.0, xDual.size) * xDual)
+            areEqual(-xDual, (-1.0) * xDual, xDual * (-1.0), Dual.const(-1.0, xDual.size) * xDual)
+        }
+    }
+
+    @Test
+    fun additionSubtraction() {
+        fun Dual.plusC(other: Dual): Dual =
+            if (this.isReal || other.isReal) Dual(this.value + other.value)
+            else Dual(this.value + other.value, this.tail() + other.tail())
+
+        fun Dual.minusC(other: Dual): Dual =
+            if (this.isReal || other.isReal) Dual(this.value - other.value)
+            else Dual(this.value - other.value, this.tail() - other.tail())
+
+        range(derivatives = 10, steps = 1000) { _, xDual ->
+            range(derivatives = 10, steps = 1000) { _, yDual ->
+                val sum = xDual + yDual
+                val sumC = xDual.plusC(yDual)
+                val diff = xDual - yDual
+                val diffC = xDual.minusC(yDual)
+
+                assertEquals(sum, sumC)
+                assertEquals(diff, diffC)
+            }
+        }
+    }
+
+    @Test
+    fun operatorTruncation() {
+        assertEquals((Dual.of(1.0, 2.0, 3.0) + Dual.of(4.0, 5.0, 6.0)).size, 3)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) - Dual.of(4.0, 5.0, 6.0)).size, 3)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) * Dual.of(4.0, 5.0, 6.0)).size, 3)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) / Dual.of(4.0, 5.0, 6.0)).size, 3)
+        assertEquals((Dual.of(1.0, 2.0) + Dual.of(4.0, 5.0, 6.0)).size, 2)
+        assertEquals((Dual.of(1.0, 2.0) - Dual.of(4.0, 5.0, 6.0)).size, 2)
+        assertEquals((Dual.of(1.0, 2.0) * Dual.of(4.0, 5.0, 6.0)).size, 2)
+        assertEquals((Dual.of(1.0, 2.0) / Dual.of(4.0, 5.0, 6.0)).size, 2)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) + Dual.of(4.0, 5.0)).size, 2)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) - Dual.of(4.0, 5.0)).size, 2)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) * Dual.of(4.0, 5.0)).size, 2)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) / Dual.of(4.0, 5.0)).size, 2)
+        assertEquals((Dual.of(1.0) + Dual.of(4.0, 5.0, 6.0)).size, 1)
+        assertEquals((Dual.of(1.0) - Dual.of(4.0, 5.0, 6.0)).size, 1)
+        assertEquals((Dual.of(1.0) * Dual.of(4.0, 5.0, 6.0)).size, 1)
+        assertEquals((Dual.of(1.0) / Dual.of(4.0, 5.0, 6.0)).size, 1)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) + Dual.of(4.0)).size, 1)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) - Dual.of(4.0)).size, 1)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) * Dual.of(4.0)).size, 1)
+        assertEquals((Dual.of(1.0, 2.0, 3.0) / Dual.of(4.0)).size, 1)
+    }
+
+    @OptIn(UnsafeDualAPI::class)
     @Test
     fun immutability() {
         let {
@@ -47,7 +107,7 @@ internal class DualTest {
 
         let {
             val array = doubleArrayOf(1.0, 2.0, 3.0)
-            val dual = Dual.castFromArray(array)
+            val dual = Dual.wrapUnsafe(array)
 
             assertTrue(dual.toList() == array.toList())
             array[0] = 10.0
@@ -83,6 +143,7 @@ internal class DualTest {
         }
     }
 
+    @OptIn(UnsafeDualAPI::class)
     @Test
     fun dequeOperations() {
         assertEquals(Dual.of(1.0, 2.0, 3.0).head(0), Dual.of(1.0, 2.0, 3.0))
@@ -93,7 +154,6 @@ internal class DualTest {
         assertEquals(Dual.of(1.0, 2.0, 3.0).tail(), Dual.of(2.0, 3.0))
         assertEquals(Dual.of(1.0, 2.0, 3.0).tail(1), Dual.of(2.0, 3.0))
         assertEquals(Dual.of(1.0, 2.0, 3.0).tail(2), Dual.of(3.0))
-        assertEquals(Dual.castFromArray(doubleArrayOf(1.0, 2.0, 3.0)), Dual.of(1.0, 2.0, 3.0))
     }
 
     @Test

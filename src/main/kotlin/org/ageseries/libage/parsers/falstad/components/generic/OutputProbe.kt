@@ -3,7 +3,6 @@ package org.ageseries.libage.parsers.falstad.components.generic
 import org.ageseries.libage.parsers.falstad.CCData
 import org.ageseries.libage.parsers.falstad.IComponentConstructor
 import org.ageseries.libage.parsers.falstad.PinRef
-import org.ageseries.libage.parsers.falstad.PosSet
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 
 /**
@@ -22,7 +21,7 @@ class OutputProbe : IComponentConstructor {
         ccd.circuit.add(r)
         r.ground(1)
 
-        val pp = (ccd.falstad.getPin(ccd.pos).representative as PosSet)
+        val pp = ccd.falstad.getPin(ccd.pos).representative
         val pr = PinRef(r, 0)
         ccd.falstad.addPinRef(pp, pr)
         ccd.falstad.addOutput(pr)

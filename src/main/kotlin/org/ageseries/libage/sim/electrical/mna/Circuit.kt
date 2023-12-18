@@ -409,8 +409,8 @@ class Circuit {
         val voltageSourceSet: MutableSet<VSource> = mutableSetOf()
 
         components.forEach {component ->
-            dprintln("component $component pinreps ${component.pins.map { it.representative as Pin }}")
-            pinSet.addAll(component.pins.map { it.representative as Pin })
+            dprintln("component $component pinreps ${component.pins.map { it.representative }}")
+            pinSet.addAll(component.pins.map { it.representative })
             voltageSourceSet.addAll(component.vsources)
         }
 
@@ -671,3 +671,5 @@ class Circuit {
         return sb.toString()
     }
 }
+
+const val LARGE_RESISTANCE = 1e9
