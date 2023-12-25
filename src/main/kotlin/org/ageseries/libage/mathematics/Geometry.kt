@@ -5,8 +5,8 @@ package org.ageseries.libage.mathematics
 import java.util.ArrayList
 import kotlin.math.*
 
-private const val GEOMETRY_COMPARE_EPS = 1e-7
-private const val GEOMETRY_NORMALIZED_EPS = 1e-6
+const val GEOMETRY_COMPARE_EPS = 1e-6
+const val GEOMETRY_NORMALIZED_EPS = 1e-7
 
 data class Matrix3x3(val c0: Vector3d, val c1: Vector3d, val c2: Vector3d) {
     constructor(
@@ -1404,6 +1404,7 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     operator fun times(other: Pose3d) = Pose3d(this.translation + this.rotation * other.translation, this.rotation * other.rotation)
     operator fun times(v: Vector3d) = this.translation + this.rotation * v
     operator fun times(transform: Rotation3d) = this.rotation * transform
+    operator fun times(obb: OrientedBoundingBox3d) = OrientedBoundingBox3d(this * obb.transform, obb.halfSize)
     operator fun div(b: Pose3d) = b.inverse * this
 
     fun approxEq(other: Pose3d, eps: Double = GEOMETRY_COMPARE_EPS) =
@@ -1688,7 +1689,7 @@ data class BoundingBox2d(val min: Vector2d, val max: Vector2d) : BoundingBox<Bou
 }
 
 /**
- * Represents a 3D axis-aligned bounding box.
+ * Represents a 3D Axis-Aligned Bounding Box (AABB).
  * */
 data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<BoundingBox3d> {
     constructor(minX: Double, minY: Double, minZ: Double, width: Double, height: Double, depth: Double) : this(
@@ -1704,14 +1705,26 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
     val isNaN get() = min.isNaN || max.isNaN
     val isInfinity get() = min.isInfinity || max.isInfinity
 
-    override val isValid get() = min.x <= max.x && min.y <= max.y && min.z <= max.z
+    /**
+     * True if a correct AABB is described (minimum coordinates are smaller than or equal to maximum coordinates) and none of the coordinates are infinity or NaN.
+     * */
+    override val isValid get() = !isInfinity && min.x <= max.x && min.y <= max.y && min.z <= max.z
 
-    val center get() = (min + max) / 2.0
+    val center get() = (min + max) * 0.5
     val width get() = max.x - min.x
     val height get() = max.y - min.y
     val depth get() = max.z - min.z
-    val size get() = max - min
+    val size get() = max - min // also called extent
+    val halfSize get() = Vector3d((max.x - min.x) * 0.5, (max.y - min.y) * 0.5, (max.z - min.z) * 0.5) // also called half extent
+
+    /**
+     * Gets the classical volume of the bounding box.
+     * */
     override val capacity get() = width * height * depth
+
+    /**
+     * Gets the surface area of the bounding box.
+     * */
     override val surface get() = 2.0 * (width * height + depth * height + width * depth)
 
     /**
@@ -1776,8 +1789,8 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
      * Checks if this box contains the [point].
      * */
     fun contains(point: Vector3d) =
-        this.min.x < point.x && this.min.y < point.y && this.min.z < point.z &&
-        this.max.x > point.x && this.max.y > point.y && this.max.z > point.z
+        min.x < point.x && min.y < point.y && min.z < point.z &&
+        max.x > point.x && max.y > point.y && max.z > point.z
 
     companion object {
         val zero = BoundingBox3d(Vector3d.zero, Vector3d.zero)
@@ -1827,11 +1840,270 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
 }
 
 /**
+ * Represents a 3D Oriented Bounding Box (OBB).
+ * This is like an AABB, but has rotation (thus is not an axis-aligned box).
+ * */
+data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) {
+    /**
+     * Constructs an OBB from the position of its [center], its [orientation] and [halfExtent].
+     * */
+    constructor(center: Vector3d, orientation: Rotation3d, halfExtent: Vector3d) : this(Pose3d(center, orientation), halfExtent)
+
+    /**
+     * Constructs an OBB from the [transform] and an axis-aligned [boundingBox].
+     * *The center of the resulting OBB is a composition of the transform and the [boundingBox]'s center.*
+     * */
+    constructor(transform: Pose3d, boundingBox: BoundingBox3d) : this(transform * boundingBox.center, transform.rotation, boundingBox.halfSize)
+
+    /**
+     * Constructs an OBB equivalent to [boundingBox] (the [transform] consist of [BoundingBox3d.center] and [Rotation3d.identity]).
+     * */
+    constructor(boundingBox: BoundingBox3d) : this(Pose3d(boundingBox.center, Rotation3d.identity), boundingBox.halfSize)
+
+    val width get() = halfSize.x * 2.0
+    val height get() = halfSize.y * 2.0
+    val depth get() = halfSize.z * 2.0
+    val size get() = halfSize * 2.0
+
+    /**
+     * Gets the classical volume of the bounding box.
+     * */
+    val capacity get() = width * height * depth
+
+    /**
+     * Gets the surface area of the bounding box.
+     * */
+    val surface get() = 2.0 * (width * height + depth * height + width * depth)
+
+    /**
+     * Transitions the [point] into the local space of the bounding box.
+     * */
+    fun transformLocal(point: Vector3d) = transform.rotation.inverse * (point - transform.translation)
+
+    /**
+     * Evaluates the mode of containment of the [other] oriented bounding box inside this box.
+     * */
+    fun evaluateContainment(other: OrientedBoundingBox3d) = evaluateContainmentRelative(this.halfSize, other.halfSize, other.transform / this.transform)
+
+    /**
+     * Evaluates the mode of containment of the axis-aligned [box] inside this box.
+     * */
+    fun evaluateContainment(box: BoundingBox3d) = evaluateContainment(OrientedBoundingBox3d(box))
+
+    /**
+     * Evaluates the mode of containment of the [sphere] inside this box.
+     * */
+    fun evaluateContainment(sphere: BoundingSphere3d) : ContainmentMode {
+        val localSphere = transformLocal(sphere.origin)
+
+        var dx = abs(localSphere.x) - halfSize.x
+        var dy = abs(localSphere.y) - halfSize.y
+        var dz = abs(localSphere.z) - halfSize.z
+
+        // Check for full containment
+        val radius = sphere.radius
+
+        if (dx <= -radius && dy <= -radius && dz <= -radius) {
+            return ContainmentMode.ContainedFully
+        }
+
+        // Compute distance in each dimension
+        dx = max(dx, 0.0)
+        dy = max(dy, 0.0)
+        dz = max(dz, 0.0)
+
+        if (dx * dx + dy * dy + dz * dz >= radius * radius) {
+            return ContainmentMode.Disjoint
+        }
+
+        return ContainmentMode.Intersected
+    }
+
+    /**
+     * Checks if [other] intersects this box.
+     * */
+    infix fun intersects(other: OrientedBoundingBox3d) = evaluateContainment(other) != ContainmentMode.Disjoint
+
+    /**
+     * Checks if [box] intersects this box.
+     * */
+    infix fun intersects(box: BoundingBox3d) = evaluateContainment(box) != ContainmentMode.Disjoint
+
+    /**
+     * Checks if [sphere] intersects this box.
+     * */
+    infix fun intersects(sphere: BoundingSphere3d) = evaluateContainment(sphere) != ContainmentMode.Disjoint
+
+    /**
+     * Checks if [other] is contained fully in this box.
+     * */
+    infix fun contains(other: OrientedBoundingBox3d) = evaluateContainment(other) == ContainmentMode.ContainedFully
+
+    /**
+     * Checks if [box] is contained fully in this box.
+     * */
+    infix fun contains(box: BoundingBox3d) = evaluateContainment(box) == ContainmentMode.ContainedFully
+
+    /**
+     * Checks if [sphere] is contained fully in this box.
+     * */
+    infix fun contains(sphere: BoundingSphere3d) = evaluateContainment(sphere) == ContainmentMode.ContainedFully
+
+    /**
+     * Checks if [point] is contained within this box.
+     * */
+    infix fun contains(point: Vector3d) : Boolean {
+        val localPoint = transformLocal(point)
+
+        val dx = abs(localPoint.x)
+        val dy = abs(localPoint.y)
+        val dz = abs(localPoint.z)
+
+        return dx <= halfSize.x && dy <= halfSize.y && dz <= halfSize.z
+    }
+
+    /**
+     * Iterates the corners of this box.
+     * */
+    inline fun corners(consumer: (Vector3d) -> Unit) {
+        val rotation = transform.rotation
+        val hx = (rotation * Vector3d.unitX) * halfSize.x
+        val hy = (rotation * Vector3d.unitY) * halfSize.y
+        val hz = (rotation * Vector3d.unitZ) * halfSize.z
+
+        val center = transform.translation
+        consumer(center - hx + hy + hz)
+        consumer(center + hx + hy + hz)
+        consumer(center + hx - hy + hz)
+        consumer(center - hx - hy + hz)
+        consumer(center - hx + hy - hz)
+        consumer(center + hx + hy - hz)
+        consumer(center + hx - hy - hz)
+        consumer(center - hx - hy - hz)
+    }
+
+    fun approxEq(other: OrientedBoundingBox3d, eps: Double = GEOMETRY_COMPARE_EPS) = halfSize.approxEq(other.halfSize, eps) && transform.approxEq(other.transform, eps)
+
+    override fun toString() = "T[${transform.translation}] R[${transform.rotation.ln()}] S[$size]"
+
+    companion object {
+        /**
+         * Evaluates containment of the box B with half extent [halfB] and transform [transformB] inside the box A with half extent [halfA], axis-aligned and at the origin.
+         * */
+        fun evaluateContainmentRelative(halfA: Vector3d, halfB: Vector3d, transformB: Pose3d): ContainmentMode {
+            val BT = transformB.translation
+            val BTa = Vector3d(abs(BT.x), abs(BT.y), abs(BT.z))
+
+            // Transform the extents of B:
+            val bx = transformB.rotation * Vector3d.unitX
+            val by = transformB.rotation * Vector3d.unitY
+            val bz = transformB.rotation * Vector3d.unitZ
+            val hxB = bx * halfB.x // x extent of box B
+            val hyB = by * halfB.y // y extent of box B
+            val hzB = bz * halfB.z // z extent of box B
+
+            // Check for containment first:
+            val projXB = abs(hxB.x) + abs(hyB.x) + abs(hzB.x)
+            val projYB = abs(hxB.y) + abs(hyB.y) + abs(hzB.y)
+            val projZB = abs(hxB.z) + abs(hyB.z) + abs(hzB.z)
+
+            if (BTa.x + projXB <= halfA.x && BTa.y + projYB <= halfA.y && BTa.z + projZB <= halfA.z) {
+                return ContainmentMode.ContainedFully
+            }
+
+            if (BTa.x > halfA.x + abs(hxB.x) + abs(hyB.x) + abs(hzB.x)) {
+                return ContainmentMode.Disjoint
+            }
+
+            if (BTa.y > halfA.y + abs(hxB.y) + abs(hyB.y) + abs(hzB.y)) {
+                return ContainmentMode.Disjoint
+            }
+
+            if (BTa.z > halfA.z + abs(hxB.z) + abs(hyB.z) + abs(hzB.z)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // Check for separation along the axes box B, hxB/hyB/hzB
+            if (abs(BT o bx) > abs(halfA.x * bx.x) + abs(halfA.y * bx.y) + abs(halfA.z * bx.z) + halfB.x) {
+                return ContainmentMode.Disjoint
+            }
+
+            if (abs(BT o by) > abs(halfA.x * by.x) + abs(halfA.y * by.y) + abs(halfA.z * by.z) + halfB.y){
+                return ContainmentMode.Disjoint
+            }
+
+            if (abs(BT o bz) > abs(halfA.x * bz.x) + abs(halfA.y * bz.y) + abs(halfA.z * bz.z) + halfB.z) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.x ^ b.x = (1,0,0) ^ bX
+            var axis = Vector3d(0.0, -bx.z, bx.y)
+            if (abs(BT o axis) > abs(halfA.y * axis.y) + abs(halfA.z * axis.z) + abs(axis o hyB) + abs(axis o hzB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.x ^ b.y = (1,0,0) ^ bY
+            axis = Vector3d(0.0, -by.z, by.y)
+            if (abs(BT o axis) > abs(halfA.y * axis.y) + abs(halfA.z * axis.z) + abs(axis o hzB) + abs(axis o hxB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.x ^ b.z = (1,0,0) ^ bZ
+            axis = Vector3d(0.0, -bz.z, bz.y)
+            if (abs(BT o axis) > abs(halfA.y * axis.y) + abs(halfA.z * axis.z) + abs(axis o hxB) + abs(axis o hyB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.y ^ b.x = (0,1,0) ^ bX
+            axis = Vector3d(bx.z, 0.0, -bx.x)
+            if (abs(BT o axis) > abs(halfA.z * axis.z) + abs(halfA.x * axis.x) + abs(axis o hyB) + abs(axis o hzB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.y ^ b.y = (0,1,0) ^ bY
+            axis = Vector3d(by.z, 0.0, -by.x)
+            if (abs((BT o axis)) > abs(halfA.z * axis.z) + abs(halfA.x * axis.x) + abs(axis o hzB) + abs(axis o hxB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.y ^ b.z = (0,1,0) ^ bZ
+            axis = Vector3d(bz.z, 0.0, -bz.x)
+            if (abs(BT o axis) > abs(halfA.z * axis.z) + abs(halfA.x * axis.x) + abs(axis o hxB) + abs(axis o hyB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.z ^ b.x = (0,0,1) ^ bX
+            axis = Vector3d(-bx.y, bx.x, 0.0)
+            if (abs(BT o axis) > abs(halfA.x * axis.x) + abs(halfA.y * axis.y) + abs(axis o hyB) + abs(axis o hzB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.z ^ b.y = (0,0,1) ^ bY
+            axis = Vector3d(-by.y, by.x, 0.0)
+            if (abs(BT o axis) > abs(halfA.x * axis.x) + abs(halfA.y * axis.y) + abs(axis o hzB) + abs(axis o hxB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            // a.z ^ b.z = (0,0,1) ^ bZ
+            axis = Vector3d(-bz.y, bz.x, 0.0)
+            if (abs(BT o axis) > abs(halfA.x * axis.x) + abs(halfA.y * axis.y) + abs(axis o hxB) + abs(axis o hyB)) {
+                return ContainmentMode.Disjoint
+            }
+
+            return ContainmentMode.Intersected
+        }
+    }
+}
+
+/**
  * Describes an intersection between a ray and a volume.
  * [entry] and [exit] are the arguments to the ray equation that will yield the two points of intersection.
  * */
-data class ParametricIntersection(val entry: Double, val exit: Double)
+data class RayIntersection(val entry: Double, val exit: Double)
 
+/**
+ * Represents a line segment bounded by the [origin] and with the specified [direction].
+ * */
 data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
     /**
      * True, if the [origin] is not infinite or NaN, and the [direction] is a ~unit vector. Otherwise, false.
@@ -1845,35 +2117,35 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
 
     /**
      * Evaluates the intersection with the [box].
-     * @return A [ParametricIntersection], if an intersection exists. Otherwise, null.
+     * @return A [RayIntersection], if an intersection exists. Otherwise, null.
      * */
-    infix fun intersectionWith(box: BoundingBox3d): ParametricIntersection? {
-        var tmin = Double.NEGATIVE_INFINITY
-        var tmax = Double.POSITIVE_INFINITY
+    infix fun intersectionWith(box: BoundingBox3d): RayIntersection? {
+        var tMin = Double.NEGATIVE_INFINITY
+        var tMax = Double.POSITIVE_INFINITY
 
         if (this.direction.x != 0.0) {
             val tx1 = (box.min.x - this.origin.x) / this.direction.x
             val tx2 = (box.max.x - this.origin.x) / this.direction.x
-            tmin = max(tmin, min(tx1, tx2))
-            tmax = min(tmax, max(tx1, tx2))
+            tMin = max(tMin, min(tx1, tx2))
+            tMax = min(tMax, max(tx1, tx2))
         }
 
         if (this.direction.y != 0.0) {
             val ty1 = (box.min.y - this.origin.y) / this.direction.y
             val ty2 = (box.max.y - this.origin.y) / this.direction.y
-            tmin = max(tmin, min(ty1, ty2))
-            tmax = min(tmax, max(ty1, ty2))
+            tMin = max(tMin, min(ty1, ty2))
+            tMax = min(tMax, max(ty1, ty2))
         }
 
         if (this.direction.z != 0.0) {
             val tz1 = (box.min.z - this.origin.z) / this.direction.z
             val tz2 = (box.max.z - this.origin.z) / this.direction.z
-            tmin = max(tmin, min(tz1, tz2))
-            tmax = min(tmax, max(tz1, tz2))
+            tMin = max(tMin, min(tz1, tz2))
+            tMax = min(tMax, max(tz1, tz2))
         }
 
-        return if (tmax >= tmin) {
-            ParametricIntersection(tmin, tmax)
+        return if (tMax >= tMin) {
+            RayIntersection(tMin, tMax)
         }
         else {
             null
@@ -2000,7 +2272,7 @@ data class Plane3d(val normal: Vector3d, val d: Double) {
      * Calculates the distance between the plane and the [point].
      * If the point is in the plane, the result is 0.
      * */
-    fun distanceToPoint(point: Vector3d) = signedDistanceToPoint(point).absoluteValue
+    fun distanceToPoint(point: Vector3d) = abs(signedDistanceToPoint(point))
 
     /**
      * Evaluates the mode of intersection with the [point].
@@ -2021,6 +2293,9 @@ data class Plane3d(val normal: Vector3d, val d: Double) {
         return PlaneIntersectionType.Intersects
     }
 
+    /**
+     * Checks if this plane contains the [point].
+     * */
     infix fun contains(point: Vector3d) = evaluateIntersection(point) == PlaneIntersectionType.Intersects
 
     /**
@@ -2050,15 +2325,15 @@ data class Plane3d(val normal: Vector3d, val d: Double) {
     }
 
     /**
+     * Evaluates the mode of intersection with the [sphere].
+     * */
+    fun evaluateIntersection(sphere: BoundingSphere3d) = evaluateIntersection(sphere.origin, sphere.radius)
+
+    /**
      * Checks if the plane intersects with the [box].
      * @return True, if the plane cuts the box. Otherwise, false.
      * */
     infix fun intersectsWith(box: BoundingBox3d) = evaluateIntersection(box) == PlaneIntersectionType.Intersects
-
-    /**
-     * Evaluates the mode of intersection with the [sphere].
-     * */
-    fun evaluateIntersection(sphere: BoundingSphere3d) = evaluateIntersection(sphere.origin, sphere.radius)
 
     /**
      * Checks if the plane intersects with the [sphere].
