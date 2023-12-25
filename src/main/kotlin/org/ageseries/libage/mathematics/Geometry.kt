@@ -1,4 +1,4 @@
-@file:Suppress("LocalVariableName", "NOTHING_TO_INLINE")
+@file:Suppress("LocalVariableName", "NOTHING_TO_INLINE", "MemberVisibilityCanBePrivate")
 
 package org.ageseries.libage.mathematics
 
@@ -420,6 +420,9 @@ data class Vector2di(val x: Int, val y: Int) {
 data class Vector2d(val x: Double, val y: Double) {
     constructor(value: Double) : this(value, value)
 
+    val isNaN get() = x.isNaN() || y.isNaN()
+    val isInfinity get() = x.isInfinite() || y.isInfinite()
+
     infix fun dot(b: Vector2d) = x * b.x + y * b.y
     val normSqr get() = this dot this
     val norm get() = sqrt(normSqr)
@@ -513,6 +516,9 @@ data class Vector2dDual(val x: Dual, val y: Dual) {
 infix fun Vector2dDual.o(other: Vector2dDual) = this dot other
 
 data class Rotation2d(val re: Double, val im: Double) {
+    val isNaN get() = re.isNaN() || im.isNaN()
+    val isInfinity get() = re.isInfinite() || im.isInfinite()
+
     fun ln() = atan2(im, re)
     fun scaled(k: Double) = exp(ln() * k)
     val inverse get() = Rotation2d(re, -im)
@@ -725,6 +731,9 @@ data class Vector3di(val x: Int, val y: Int, val z: Int) {
 data class Vector3d(val x: Double, val y: Double, val z: Double) {
     constructor(x: Int, y: Int, z: Int) : this(x.toDouble(), y.toDouble(), z.toDouble())
     constructor(value: Double) : this(value, value, value)
+
+    val isNaN get() = x.isNaN() || y.isNaN() || z.isNaN()
+    val isInfinity get() = x.isInfinite() || y.isInfinite() || z.isInfinite()
 
     infix fun dot(b: Vector3d) = x * b.x + y * b.y + z * b.z
     val normSqr get() = this dot this
@@ -939,6 +948,9 @@ fun Vector3dDual.x(other: Vector3dDual) = this cross other
 data class Vector4d(val x: Double, val y: Double, val z: Double, val w: Double) {
     constructor(value: Double) : this(value, value, value, value)
 
+    val isNaN get() = x.isNaN() || y.isNaN() || z.isNaN() || w.isNaN()
+    val isInfinity get() = x.isInfinite() || y.isInfinite() || z.isInfinite() || w.isInfinite()
+
     infix fun dot(b: Vector4d) = x * b.x + y * b.y + z * b.z + w * b.w
     val normSqr get() = this dot this
     val norm get() = sqrt(normSqr)
@@ -1052,6 +1064,9 @@ fun avg(vectors: List<Vector4d>) = vectors.reduce { a, b -> a + b } / vectors.si
 data class AxisAngle3d(val axis: Vector3d, val angle: Double)
 
 data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double) {
+    val isNaN get() = x.isNaN() || y.isNaN() || z.isNaN() || w.isNaN()
+    val isInfinity get() = x.isInfinite() || y.isInfinite() || z.isInfinite() || w.isInfinite()
+
     val normSqr get() = this dot this
     val norm get() = sqrt(normSqr)
     fun normalized() = this / norm
@@ -1500,9 +1515,21 @@ data class CoordinateSystem(val transform: Matrix3x3) {
     }
 }
 
+/**
+ * Describes the mode of containment of an object inside another object.
+ * */
 enum class ContainmentMode {
+    /**
+     * The two objects do not intersect at all.
+     * */
     Disjoint,
+    /**
+     * The two objects intersect, but the right-hand-side object is not contained completely inside the left-hand-side object.
+     * */
     Intersected,
+    /**
+     * The right-hand-side object is contained fully inside the left-hand-side object.
+     * */
     ContainedFully
 }
 
@@ -1660,16 +1687,22 @@ data class BoundingBox2d(val min: Vector2d, val max: Vector2d) : BoundingBox<Bou
     }
 }
 
+/**
+ * Represents a 3D axis-aligned bounding box.
+ * */
 data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<BoundingBox3d> {
     constructor(minX: Double, minY: Double, minZ: Double, width: Double, height: Double, depth: Double) : this(
         Vector3d(minX, minY, minZ),
         Vector3d(minX + width, minY + height, minZ + depth)
     )
 
-    constructor(sphere: BoundingSphere) : this(
+    constructor(sphere: BoundingSphere3d) : this(
         sphere.origin - Vector3d(sphere.radius),
         sphere.origin + Vector3d(sphere.radius)
     )
+
+    val isNaN get() = min.isNaN || max.isNaN
+    val isInfinity get() = min.isInfinity || max.isInfinity
 
     override val isValid get() = min.x <= max.x && min.y <= max.y && min.z <= max.z
 
@@ -1681,6 +1714,9 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
     override val capacity get() = width * height * depth
     override val surface get() = 2.0 * (width * height + depth * height + width * depth)
 
+    /**
+     * Gets the intersection between this box and the [other] box. The result will be [zero] if there is no intersection.
+     * */
     override infix fun intersectionWith(other: BoundingBox3d): BoundingBox3d {
         val result = BoundingBox3d(
             Vector3d.max(this.min, other.min),
@@ -1694,11 +1730,18 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
         }
     }
 
+    /**
+     * Checks if this box intersects with the [other] box.
+     * */
     override infix fun intersectsWith(other: BoundingBox3d) =
         other.min.x < this.max.x && this.min.x < other.max.x &&
         other.min.y < this.max.y && this.min.y < other.max.y &&
         other.min.z < this.max.z && this.min.z < other.max.z
 
+    /**
+     * Computes the union of this box with the [other box].
+     * @return A box that contains this box and the other box.
+     * */
     override infix fun unionWith(other: BoundingBox3d) = BoundingBox3d(
         Vector3d.min(min, other.min),
         Vector3d.max(max, other.max)
@@ -1713,6 +1756,9 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
     fun inflated(amount: Double) = inflated(amount, amount, amount)
     override fun inflatedBy(percent: Double) = inflated(width * percent, height * percent, depth * percent)
 
+    /**
+     * Evaluates the containment mode of [other] in this box.
+     * */
     override fun evaluateContainment(other: BoundingBox3d): ContainmentMode {
         if (!this.intersectsWith(other)) {
             return ContainmentMode.Disjoint
@@ -1726,6 +1772,9 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
         else ContainmentMode.ContainedFully
     }
 
+    /**
+     * Checks if this box contains the [point].
+     * */
     fun contains(point: Vector3d) =
         this.min.x < point.x && this.min.y < point.y && this.min.z < point.z &&
         this.max.x > point.x && this.max.y > point.y && this.max.z > point.z
@@ -1733,6 +1782,9 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
     companion object {
         val zero = BoundingBox3d(Vector3d.zero, Vector3d.zero)
 
+        /**
+         * Gets a bounding box centered at [center], with its width, height and depth as specified by [size].
+         * */
         fun fromCenterSize(center: Vector3d, size: Vector3d) : BoundingBox3d {
             val halfX = size.x * 0.5
             val halfY = size.y * 0.5
@@ -1752,6 +1804,9 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
             )
         }
 
+        /**
+         * Gets a bounding box centered at [center], with its width, height and depth equal to [size] (a cube).
+         * */
         fun fromCenterSize(center: Vector3d, size: Double) : BoundingBox3d {
             val half = size * 0.5
 
@@ -1771,38 +1826,48 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
     }
 }
 
-data class ParametricIntersection(val entry: Double, val exit: Double, )
+/**
+ * Describes an intersection between a ray and a volume.
+ * [entry] and [exit] are the arguments to the ray equation that will yield the two points of intersection.
+ * */
+data class ParametricIntersection(val entry: Double, val exit: Double)
 
 data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
-    init {
-        require(direction.isUnit) {
-            "Cannot create ray with non-unit $direction (${direction.norm})"
-        }
-    }
+    /**
+     * True, if the [origin] is not infinite or NaN, and the [direction] is a ~unit vector. Otherwise, false.
+     * */
+    val isValid get() = !origin.isNaN && !origin.isInfinity && direction.isUnit
 
+    /**
+     * Evaluates the parametric equation of the ray to get the point in space.
+     * */
     fun evaluate(t: Double) = origin + direction * t
 
-    infix fun intersectionWith(b: BoundingBox3d): ParametricIntersection? {
+    /**
+     * Evaluates the intersection with the [box].
+     * @return A [ParametricIntersection], if an intersection exists. Otherwise, null.
+     * */
+    infix fun intersectionWith(box: BoundingBox3d): ParametricIntersection? {
         var tmin = Double.NEGATIVE_INFINITY
         var tmax = Double.POSITIVE_INFINITY
 
         if (this.direction.x != 0.0) {
-            val tx1 = (b.min.x - this.origin.x) / this.direction.x
-            val tx2 = (b.max.x - this.origin.x) / this.direction.x
+            val tx1 = (box.min.x - this.origin.x) / this.direction.x
+            val tx2 = (box.max.x - this.origin.x) / this.direction.x
             tmin = max(tmin, min(tx1, tx2))
             tmax = min(tmax, max(tx1, tx2))
         }
 
         if (this.direction.y != 0.0) {
-            val ty1 = (b.min.y - this.origin.y) / this.direction.y
-            val ty2 = (b.max.y - this.origin.y) / this.direction.y
+            val ty1 = (box.min.y - this.origin.y) / this.direction.y
+            val ty2 = (box.max.y - this.origin.y) / this.direction.y
             tmin = max(tmin, min(ty1, ty2))
             tmax = min(tmax, max(ty1, ty2))
         }
 
         if (this.direction.z != 0.0) {
-            val tz1 = (b.min.z - this.origin.z) / this.direction.z
-            val tz2 = (b.max.z - this.origin.z) / this.direction.z
+            val tz1 = (box.min.z - this.origin.z) / this.direction.z
+            val tz2 = (box.max.z - this.origin.z) / this.direction.z
             tmin = max(tmin, min(tz1, tz2))
             tmax = min(tmax, max(tz1, tz2))
         }
@@ -1815,137 +1880,223 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
         }
     }
 
+    /**
+     * Gets the intersection point of the ray with the [plane].
+     * @return The point of intersection, which lies in the plane and along the normal line of the ray.
+     * You will get NaNs and infinities if no intersection occurs; consider [Vector3d.isNaN] and [Vector3d.isInfinity] before using the results.
+     * */
+    infix fun intersectionWith(plane: Plane3d) = this.origin + this.direction * -((plane.normal o this.origin) + plane.d) / (plane.normal o this.direction)
+
     companion object {
+        /**
+         * Calculates a ray from a starting point [source] and a point [destination], that the ray shall pass through.
+         * You will get NaNs and infinities if the source and destination are NaNs, infinities, or they are ~close to each other.
+         * */
         fun fromSourceAndDestination(source: Vector3d, destination: Vector3d) = Ray3d(source, source directionTo destination)
     }
 }
 
-data class BoundingSphere(val origin: Vector3d, val radius: Double) {
+/**
+ * Represents a 3D bounding sphere.
+ * */
+data class BoundingSphere3d(val origin: Vector3d, val radius: Double) {
     val radiusSqr get() = radius * radius
 
-    constructor(box: BoundingBox3d) : this(box.center, box.center .. box.max)
+    /**
+     * Constructs a [BoundingSphere3d] from the [box].
+     * */
+    constructor(box: BoundingBox3d) : this(box.center, box.center..box.max)
 
-    infix fun unionWith(b: BoundingSphere): BoundingSphere {
-        val dxAB = b.origin - this.origin
+    /**
+     * Computes the union of this sphere and the [other] sphere.
+     * @return A sphere that contains both this sphere and the [other] sphere.
+     * */
+    infix fun unionWith(other: BoundingSphere3d): BoundingSphere3d {
+        val dxAB = other.origin - this.origin
         val distance = dxAB.norm
 
-        if (radius + b.radius >= distance) {
-            if (radius - b.radius >= distance) {
+        if (radius + other.radius >= distance) {
+            if (radius - other.radius >= distance) {
                 return this
-            } else if (b.radius - radius >= distance) {
-                return b
+            } else if (other.radius - radius >= distance) {
+                return other
             }
         }
 
         val direction = dxAB / distance
-        val a = min(-radius, distance - b.radius)
-        val r = (max(radius, distance + b.radius) - a) * 0.5
+        val a = min(-radius, distance - other.radius)
+        val r = (max(radius, distance + other.radius) - a) * 0.5
 
-        return BoundingSphere(this.origin + direction * (r + a), r)
+        return BoundingSphere3d(this.origin + direction * (r + a), r)
     }
 
+    /**
+     * Checks if the [point] is inside the sphere.
+     * */
     fun contains(point: Vector3d) = (origin distanceToSqr point) < radiusSqr
 
-    override fun toString() = "O: $origin R: $radius"
+    override fun toString() = "$origin r=$radius"
 }
 
-infix fun BoundingSphere.u(other: BoundingSphere) = this unionWith other
+infix fun BoundingSphere3d.u(other: BoundingSphere3d) = this unionWith other
 
-fun bresenham(
-    startX: Int,
-    startY: Int,
-    startZ: Int,
-    endX: Int,
-    endY: Int,
-    endZ: Int,
-    user: (Int, Int, Int) -> Boolean,
-) {
-    var x = startX
-    var y = startY
-    var z = startZ
+/**
+ * Describes the mode of intersection between a plane and another object.
+ * */
+enum class PlaneIntersectionType {
+    /**
+     * The plane and object do not intersect, and the object is in the positive half-space.
+     * */
+    Positive,
+    /**
+     * The plane and object do not intersect, and the object is in the negative half-space.
+     * */
+    Negative,
+    /**
+     * The plane and object intersect.
+     * */
+    Intersects
+}
 
-    if (!user(x, y, z)) {
-        return
+/**
+ * Represents a 3D Plane.
+ * @param normal The normal of the plane.
+ * @param d The distance from the origin along the normal to the plane.
+ * *The distance is signed and is not what you would expect:*
+ *
+ * Plane Equation:
+ * (n **o** v) + d = 0 -> d = -(n **o** v)
+ * */
+data class Plane3d(val normal: Vector3d, val d: Double) {
+    /**
+     * True, if the [normal] is a ~unit vector, and the distance [d] is not infinite or NaN. Otherwise, false.
+     * */
+    val isValid get() = normal.isUnit && !d.isInfinite() && !d.isNaN()
+
+    /**
+     * Constructs a [Plane3d] from the normal vector and distance from origin.
+     * @param x The X component of the normal.
+     * @param y The Y component of the normal.
+     * @param z The Z component of the normal.
+     * @param w The distance from the origin.
+     * */
+    constructor(x: Double, y: Double, z: Double, w: Double) : this(Vector3d(x, y, z), w)
+
+    /**
+     * Constructs a [Plane3d] from the normal vector and a point in the plane.
+     * @param normal The normal of the plane.
+     * @param point A point that lies within the plane.
+     * */
+    constructor(normal: Vector3d, point: Vector3d) : this(normal, -(point o normal))
+
+    /**
+     * Calculates the distance between the plane and the [point].
+     * If the point is in the plane, the result is 0.
+     * The distance is signed; if the point is above the plane, it will be positive. If below the plane, it will be negative.
+     * */
+    fun signedDistanceToPoint(point: Vector3d) = (normal o point) + d
+
+    /**
+     * Calculates the distance between the plane and the [point].
+     * If the point is in the plane, the result is 0.
+     * */
+    fun distanceToPoint(point: Vector3d) = signedDistanceToPoint(point).absoluteValue
+
+    /**
+     * Evaluates the mode of intersection with the [point].
+     * Here, [PlaneIntersectionType.Intersects] means that the plane ~contains the point.
+     * @param eps The tolerance. If the distance to the point is below this tolerance, it is considered that the plane contains the point.
+     * */
+    fun evaluateIntersection(point: Vector3d, eps: Double = GEOMETRY_COMPARE_EPS) : PlaneIntersectionType {
+        val distance = signedDistanceToPoint(point)
+
+        if(distance > eps) {
+            return PlaneIntersectionType.Positive
+        }
+
+        if(distance < -eps) {
+            return PlaneIntersectionType.Negative
+        }
+
+        return PlaneIntersectionType.Intersects
     }
 
-    val dx = abs(endX - x)
-    val dy = abs(endY - y)
-    val dz = abs(endZ - z)
-    val sx = nsnzi(dx)
-    val sy = nsnzi(dy)
-    val sz = nsnzi(dz)
+    infix fun contains(point: Vector3d) = evaluateIntersection(point) == PlaneIntersectionType.Intersects
 
-    if (dx >= dy && dx >= dz) {
-        var a = 2 * dy - dx
-        var b = 2 * dz - dx
+    /**
+     * Evaluates the mode of intersection with the [box].
+     * */
+    fun evaluateIntersection(box: BoundingBox3d) : PlaneIntersectionType {
+        val nx = normal.x
+        val ny = normal.y
+        val nz = normal.z
 
-        while (x != endX) {
-            x += sx
+        val x1 = if (nx >= 0.0) box.min.x else box.max.x
+        val y1 = if (ny >= 0.0) box.min.y else box.max.y
+        val z1 = if (nz >= 0.0) box.min.z else box.max.z
+        val x2 = if (nx >= 0.0) box.max.x else box.min.x
+        val y2 = if (ny >= 0.0) box.max.y else box.min.y
+        val z2 = if (nz >= 0.0) box.max.z else box.min.z
 
-            if (a >= 0) {
-                y += sy
-                a -= 2 * dx
-            }
-
-            if (b >= 0) {
-                z += sz
-                b -= 2 * dx
-            }
-
-            a += 2 * dy
-            b += 2 * dz
-
-            if (!user(x, y, z)) {
-                return
-            }
+        if (nx * x1 + ny * y1 + nz * z1 + d > 0.0) {
+            return PlaneIntersectionType.Positive
         }
-    } else if (dy >= dx && dy >= dz) {
-        var a = 2 * dx - dy
-        var b = 2 * dz - dy
 
-        while (y != endY) {
-            y += sy
-
-            if (a >= 0) {
-                x += sx
-                a -= 2 * dy
-            }
-
-            if (b >= 0) {
-                z += sz
-                b -= 2 * dy
-            }
-
-            a += 2 * dx
-            b += 2 * dz
-
-            if (!user(x, y, z)) {
-                return
-            }
+        if (nx * x2 + ny * y2 + nz * z2 + d < 0.0) {
+            return PlaneIntersectionType.Negative
         }
-    } else {
-        var a = 2 * dy - dz
-        var b = 2 * dx - dz
 
-        while (z != endZ) {
-            z += sz
+        return PlaneIntersectionType.Intersects
+    }
 
-            if (a >= 0) {
-                y += sy
-                a -= 2 * dz
-            }
+    /**
+     * Checks if the plane intersects with the [box].
+     * @return True, if the plane cuts the box. Otherwise, false.
+     * */
+    infix fun intersectsWith(box: BoundingBox3d) = evaluateIntersection(box) == PlaneIntersectionType.Intersects
 
-            if (b >= 0) {
-                x += sx
-                b -= 2 * dz
-            }
+    /**
+     * Evaluates the mode of intersection with the [sphere].
+     * */
+    fun evaluateIntersection(sphere: BoundingSphere3d) = evaluateIntersection(sphere.origin, sphere.radius)
 
-            a += 2 * dy
-            b += 2 * dx
+    /**
+     * Checks if the plane intersects with the [sphere].
+     * @return True, if the plane cuts the sphere. Otherwise, false.
+     * */
+    infix fun intersectsWith(sphere: BoundingSphere3d) = evaluateIntersection(sphere) == PlaneIntersectionType.Intersects
 
-            if (!user(x, y, z)) {
-                return
-            }
+    fun approxEq(other: Plane3d, eps: Double = GEOMETRY_COMPARE_EPS) = normal.approxEq(other.normal, eps) && d.approxEq(other.d, eps)
+
+    override fun toString() = "$normal, d=$d"
+
+    companion object {
+        val unitX = Plane3d(Vector3d.unitX, 0.0)
+        val unitY = Plane3d(Vector3d.unitY, 0.0)
+        val unitZ = Plane3d(Vector3d.unitZ, 0.0)
+
+        /**
+         * Creates a plane that contains the specified points. The returned plane is valid if the points form a non-degenerate triangle.
+         * */
+        fun createFromVertices(a: Vector3d, b: Vector3d, c: Vector3d) : Plane3d {
+            val ax = b.x - a.x
+            val ay = b.y - a.y
+            val az = b.z - a.z
+
+            val bx = c.x - a.x
+            val by = c.y - a.y
+            val bz = c.z - a.z
+
+            val nx = ay * bz - az * by
+            val ny = az * bx - ax * bz
+            val nz = ax * by - ay * bx
+
+            val n = 1.0 / sqrt(nx * nx + ny * ny + nz * nz)
+
+            val normal = Vector3d(nx * n, ny * n, nz * n)
+            val d = -(normal.x * a.x + normal.y * a.y + normal.z * a.z)
+
+            return Plane3d(normal, d)
         }
     }
 }

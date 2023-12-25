@@ -3,6 +3,7 @@
 package org.eln2.libelectric.mathematics
 
 import org.ageseries.libage.mathematics.*
+import org.eln2.libelectric.TestUtils.areEqual
 import org.eln2.libelectric.TestUtils.rangeScan
 import org.eln2.libelectric.TestUtils.rangeScanKd
 import org.junit.jupiter.api.Assertions.*
@@ -482,6 +483,48 @@ internal class GeometryTest {
         ) * (1.0 / 10.0)
 
         assertTrue((!A).approxEq(expected))
+    }
+
+    @Test
+    fun planeTest() {
+        assertTrue(Plane3d.unitX.approxEq(Plane3d(Vector3d.unitX, Vector3d.zero)))
+        assertTrue(Plane3d.unitY.approxEq(Plane3d(Vector3d.unitY, Vector3d.zero)))
+        assertTrue(Plane3d.unitZ.approxEq(Plane3d(Vector3d.unitZ, Vector3d.zero)))
+
+        assertTrue(Plane3d.unitX.contains(Vector3d.zero))
+        assertTrue(Plane3d.unitY.contains(Vector3d.zero))
+        assertTrue(Plane3d.unitZ.contains(Vector3d.zero))
+
+        assertTrue(Plane3d.unitX.contains(Vector3d.unitY) && Plane3d.unitX.contains(Vector3d.unitZ))
+        assertTrue(Plane3d.unitY.contains(Vector3d.unitX) && Plane3d.unitY.contains(Vector3d.unitZ))
+        assertTrue(Plane3d.unitZ.contains(Vector3d.unitX) && Plane3d.unitZ.contains(Vector3d.unitY))
+
+        areEqual(Plane3d.unitX.distanceToPoint(Vector3d.unitX), 1.0)
+        areEqual(Plane3d.unitY.distanceToPoint(Vector3d.unitY), 1.0)
+        areEqual(Plane3d.unitZ.distanceToPoint(Vector3d.unitZ), 1.0)
+
+        areEqual(Plane3d.unitX.distanceToPoint(Vector3d.unitY), Plane3d.unitX.distanceToPoint(Vector3d.unitZ), 0.0)
+        areEqual(Plane3d.unitY.distanceToPoint(Vector3d.unitX), Plane3d.unitY.distanceToPoint(Vector3d.unitZ), 0.0)
+        areEqual(Plane3d.unitZ.distanceToPoint(Vector3d.unitX), Plane3d.unitZ.distanceToPoint(Vector3d.unitY), 0.0)
+
+        val plane = Plane3d(Vector3d.unitY, -Vector3d.unitY)
+
+        assertEquals(plane.evaluateIntersection(Vector3d.zero), PlaneIntersectionType.Positive)
+        assertEquals(plane.evaluateIntersection(Vector3d.unitY * -2.0), PlaneIntersectionType.Negative)
+        assertEquals(plane.evaluateIntersection(Vector3d.unitY * -1.0), PlaneIntersectionType.Intersects)
+
+        assertEquals(plane.signedDistanceToPoint(Vector3d.zero), 1.0)
+        assertEquals(plane.signedDistanceToPoint(-Vector3d.unitY * 2.0), -1.0)
+
+        assertTrue(Ray3d(Vector3d(10.0, 0.0, 10.0), -Vector3d.unitY).intersectionWith(plane).approxEq(Vector3d(10.0, -1.0, 10.0)))
+
+        assertTrue(
+            Plane3d.createFromVertices(
+                Vector3d(10.0, -1.0, 5.0),
+                Vector3d(20.0, -1.0, -6.0),
+                Vector3d(-10.0, -1.0, 2.0)
+            ).approxEq(plane)
+        )
     }
 
     @Test
