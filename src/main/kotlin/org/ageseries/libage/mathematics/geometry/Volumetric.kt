@@ -660,7 +660,7 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
      * Evaluates the intersection with the [box].
      * @return A [RayIntersection], if an intersection exists. Otherwise, null.
      * */
-    infix fun Ray3d.intersectionWith(box: OrientedBoundingBox3d): RayIntersection? {
+    infix fun intersectionWith(box: OrientedBoundingBox3d): RayIntersection? {
         val eps = GEOMETRY_COMPARE_EPS // way more compound error compared to AABB
 
         val center = box.transform.translation - this.origin
