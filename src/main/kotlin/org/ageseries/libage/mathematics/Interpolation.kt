@@ -5,6 +5,7 @@ package org.ageseries.libage.mathematics
 import org.ageseries.libage.data.ClosedInterval
 import org.ageseries.libage.data.SegmentTree
 import org.ageseries.libage.data.SegmentTreeBuilder
+import org.ageseries.libage.mathematics.geometry.*
 import kotlin.math.*
 
 inline fun lerp(from: Double, to: Double, factor: Double) = (1.0 - factor) * from + factor * to

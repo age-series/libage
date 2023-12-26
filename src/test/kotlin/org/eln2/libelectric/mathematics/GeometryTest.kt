@@ -3,6 +3,7 @@
 package org.eln2.libelectric.mathematics
 
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.libelectric.TestUtils.areEqual
 import org.eln2.libelectric.TestUtils.rangeScan
 import org.eln2.libelectric.TestUtils.rangeScanKd

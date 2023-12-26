@@ -21,7 +21,7 @@ import org.ageseries.libage.sim.electrical.mna.component.Component
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.data.SuperDisjointSet
-import org.ageseries.libage.mathematics.Vector2di
+import org.ageseries.libage.mathematics.geometry.Vector2di
 
 /**
  * A splitting pattern for runs of one or more spaces (ASCII 32).
