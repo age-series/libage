@@ -87,11 +87,6 @@ infix fun<T : BoundingBox<T>> BoundingBox<T>.n(other: T) = this intersectionWith
  * Represents a 2D Axis-Aligned Bounding Box (AABB).
  * */
 data class BoundingBox2d(val min: Vector2d, val max: Vector2d) : BoundingBox<BoundingBox2d> {
-    constructor(minX: Double, minY: Double, width: Double, height: Double) : this(
-        Vector2d(minX, minY),
-        Vector2d(minX + width, minY + height)
-    )
-
     override val isValid get() = min.x <= max.x && min.y <= max.y
     val center get() = (min + max) / 2.0
     val width get() = max.x - min.x
@@ -187,14 +182,6 @@ data class BoundingBox2d(val min: Vector2d, val max: Vector2d) : BoundingBox<Bou
  * Represents a 3D Axis-Aligned Bounding Box (AABB).
  * */
 data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<BoundingBox3d> {
-    /**
-     * Constructs a [BoundingBox3d] from the components of the [min] and [max] vectors.
-     * */
-    constructor(minX: Double, minY: Double, minZ: Double, width: Double, height: Double, depth: Double) : this(
-        Vector3d(minX, minY, minZ),
-        Vector3d(minX + width, minY + height, minZ + depth)
-    )
-
     val isNaN get() = min.isNaN || max.isNaN
     val isInfinity get() = min.isInfinity || max.isInfinity
 
@@ -361,7 +348,10 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
                 if(z > maxZ) maxZ = z
             }
 
-            return BoundingBox3d(minX, minY, minZ, maxX, maxY, maxZ)
+            return BoundingBox3d(
+                Vector3d(minX, minY, minZ),
+                Vector3d(maxX, maxY, maxZ)
+            )
         }
 
         /**
@@ -400,7 +390,10 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
                 if(z > maxZ) maxZ = z
             }
 
-            return BoundingBox3d(minX, minY, minZ, maxX, maxY, maxZ)
+            return BoundingBox3d(
+                Vector3d(minX, minY, minZ),
+                Vector3d(maxX, maxY, maxZ)
+            )
         }
 
         /**
