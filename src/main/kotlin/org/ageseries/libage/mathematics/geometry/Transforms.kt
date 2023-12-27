@@ -396,7 +396,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 /**
  * Builder for a [Rotation3d].
  * All operations will apply the *action* on the current [rotation].
- * As such, the transformations will be composed in the order they are applied.
+ * As such, the transformations will be applied to the object in the order they appear in code.
  * */
 class Rotation3dBuilder {
     var rotation = Rotation3d.identity
@@ -638,6 +638,71 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
                 Rotation3d.exp(incr.rotIncr)
             )
         }
+    }
+}
+
+/**
+ * Builder for a [Pose3d].
+ * All operations will apply the *action* on the current [pose].
+ * As such, the transformations will be applied to the object in the order they appear in code.
+ * */
+class Pose3dBuilder {
+    var pose = Pose3d.identity
+
+    var translation: Vector3d
+        get() = pose.translation
+        set(value) { pose = pose.copy(translation = value) }
+
+    var rotation: Rotation3d
+        get() = pose.rotation
+        set(value) { pose = pose.copy(rotation = value) }
+
+    fun identity(): Pose3dBuilder {
+        pose = Pose3d.identity
+        return this
+    }
+
+    fun transform(pose3d: Pose3d) : Pose3dBuilder {
+        pose = pose3d * pose
+        return this
+    }
+
+    fun transform(rotation3d: Rotation3d) : Pose3dBuilder {
+        pose = rotation3d * pose
+        return this
+    }
+
+    /**
+     * Rotates the pose "in-place". Equivalent to transforming a pose with [Vector3d.zero] and [rotation] by [pose].
+     * */
+    fun rotateBy(rotation: Rotation3d) : Pose3dBuilder {
+        pose = pose.copy(rotation = rotation * pose.rotation)
+        return this
+    }
+
+    fun translate(x: Double, y: Double, z: Double) : Pose3dBuilder {
+        val (tx, ty, tz) = pose.translation
+        pose = pose.copy(translation = Vector3d(tx + x, ty + y, tz + z))
+        return this
+    }
+
+    fun translate(v: Vector3d) : Pose3dBuilder {
+        pose += v
+        return this
+    }
+
+    fun twist(twist3d: Twist3dIncr) = transform(Pose3d.exp(twist3d))
+
+    operator fun timesAssign(pose: Pose3d) {
+        transform(pose)
+    }
+
+    operator fun timesAssign(translation: Vector3d) {
+        translate(translation)
+    }
+
+    operator fun minusAssign(translation: Vector3d) {
+        translate(-translation)
     }
 }
 

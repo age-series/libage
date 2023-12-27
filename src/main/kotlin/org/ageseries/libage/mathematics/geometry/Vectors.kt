@@ -3,10 +3,7 @@
 package org.ageseries.libage.mathematics.geometry
 
 import org.ageseries.libage.mathematics.*
-import kotlin.math.abs
-import kotlin.math.acos
-import kotlin.math.sign
-import kotlin.math.sqrt
+import kotlin.math.*
 
 data class Vector2di(val x: Int, val y: Int) {
     constructor(value: Int) : this(value, value)
@@ -72,15 +69,20 @@ data class Vector2d(val x: Double, val y: Double) {
         val unitY = Vector2d(0.0, 1.0)
 
         fun lerp(a: Vector2d, b: Vector2d, t: Double) = Vector2d(
-            org.ageseries.libage.mathematics.lerp(a.x, b.x, t),
-            org.ageseries.libage.mathematics.lerp(a.y, b.y, t)
+            lerp(a.x, b.x, t),
+            lerp(a.y, b.y, t)
         )
 
-        fun min(a: Vector2d, b: Vector2d) = Vector2d(kotlin.math.min(a.x, b.x), kotlin.math.min(a.y, b.y))
+        fun min(a: Vector2d, b: Vector2d) = Vector2d(min(a.x, b.x), min(a.y, b.y))
 
-        fun max(a: Vector2d, b: Vector2d) = Vector2d(kotlin.math.max(a.x, b.x), kotlin.math.max(a.y, b.y))
+        fun max(a: Vector2d, b: Vector2d) = Vector2d(max(a.x, b.x), max(a.y, b.y))
     }
 }
+
+fun Double.plus(vector2d: Vector2d) = Vector2d(this + vector2d.x, this + vector2d.y)
+fun Double.minus(vector2d: Vector2d) = Vector2d(this - vector2d.x, this - vector2d.y)
+fun Double.times(vector2d: Vector2d) = Vector2d(this * vector2d.x, this * vector2d.y)
+fun Double.div(vector2d: Vector2d) = Vector2d(this / vector2d.x, this / vector2d.y)
 
 infix fun Vector2d.o(other: Vector2d) = this dot other
 operator fun Vector2d.rangeTo(b: Vector2d) = this distanceTo b
@@ -199,36 +201,25 @@ data class Vector3d(val x: Double, val y: Double, val z: Double) {
     operator fun unaryPlus() = this
     operator fun unaryMinus() = Vector3d(-x, -y, -z)
     operator fun plus(b: Vector3d) = Vector3d(x + b.x, y + b.y, z + b.z)
+    operator fun plus(b: Double) = Vector3d(x + b, y + b, z + b)
     operator fun minus(b: Vector3d) = Vector3d(x - b.x, y - b.y, z - b.z)
+    operator fun minus(b: Double) = Vector3d(x - b, y - b, z - b)
     operator fun times(b: Vector3d) = Vector3d(x * b.x, y * b.y, z * b.z)
-    operator fun div(b: Vector3d) = Vector3d(x / b.x, y / b.y, z / b.z)
     operator fun times(scalar: Double) = Vector3d(x * scalar, y * scalar, z * scalar)
+    operator fun div(b: Vector3d) = Vector3d(x / b.x, y / b.y, z / b.z)
     operator fun div(scalar: Double) = Vector3d(x / scalar, y / scalar, z / scalar)
     operator fun compareTo(other: Vector3d) = this.normSqr.compareTo(other.normSqr)
 
     fun projectOnPlane(n: Vector3d) = this - n * ((this dot n) / n.normSqr)
     fun projectOnVector(v: Vector3d) = if (this == zero || v == zero) zero else v * (this dot v) / v.normSqr
 
-    fun frac() = Vector3d(
-        org.ageseries.libage.mathematics.frac(this.x),
-        org.ageseries.libage.mathematics.frac(this.y),
-        org.ageseries.libage.mathematics.frac(this.z)
-    )
-    fun floor() = Vector3d(kotlin.math.floor(this.x), kotlin.math.floor(this.y), kotlin.math.floor(this.z))
-    fun ceil() = Vector3d(kotlin.math.ceil(this.x), kotlin.math.ceil(this.y), kotlin.math.ceil(this.z))
-    fun round() = Vector3d(kotlin.math.round(this.x), kotlin.math.round(this.y), kotlin.math.round(this.z))
-    fun floorInt() = Vector3di(
-        kotlin.math.floor(this.x).toInt(),
-        kotlin.math.floor(this.y).toInt(),
-        kotlin.math.floor(this.z).toInt()
-    )
-    fun ceilInt() =
-        Vector3di(kotlin.math.ceil(this.x).toInt(), kotlin.math.ceil(this.y).toInt(), kotlin.math.ceil(this.z).toInt())
-    fun roundInt() = Vector3di(
-        kotlin.math.round(this.x).toInt(),
-        kotlin.math.round(this.y).toInt(),
-        kotlin.math.round(this.z).toInt()
-    )
+    fun frac() = Vector3d(frac(this.x), frac(this.y), frac(this.z))
+    fun floor() = Vector3d(floor(this.x), floor(this.y), floor(this.z))
+    fun ceil() = Vector3d(ceil(this.x), ceil(this.y), ceil(this.z))
+    fun round() = Vector3d(round(this.x), round(this.y), round(this.z))
+    fun floorInt() = Vector3di(floor(this.x).toInt(), floor(this.y).toInt(), floor(this.z).toInt())
+    fun ceilInt() = Vector3di(ceil(this.x).toInt(), ceil(this.y).toInt(), ceil(this.z).toInt())
+    fun roundInt() = Vector3di(round(this.x).toInt(), round(this.y).toInt(), round(this.z).toInt())
     fun intCast() = Vector3di(x.toInt(), y.toInt(), z.toInt())
 
     fun perpendicular() : Vector3d {
@@ -277,30 +268,33 @@ data class Vector3d(val x: Double, val y: Double, val z: Double) {
         val unitZ = Vector3d(0.0, 0.0, 1.0)
 
         fun lerp(from: Vector3d, to: Vector3d, t: Double) = Vector3d(
-            org.ageseries.libage.mathematics.lerp(from.x, to.x, t),
-            org.ageseries.libage.mathematics.lerp(from.y, to.y, t),
-            org.ageseries.libage.mathematics.lerp(from.z, to.z, t)
+            lerp(from.x, to.x, t),
+            lerp(from.y, to.y, t),
+            lerp(from.z, to.z, t)
         )
 
         fun min(a: Vector3d, b: Vector3d) = Vector3d(
-            kotlin.math.min(a.x, b.x),
-            kotlin.math.min(a.y, b.y),
-            kotlin.math.min(a.z, b.z)
+            min(a.x, b.x),
+            min(a.y, b.y),
+            min(a.z, b.z)
         )
 
         fun max(a: Vector3d, b: Vector3d) = Vector3d(
-            kotlin.math.max(a.x, b.x),
-            kotlin.math.max(a.y, b.y),
-            kotlin.math.max(a.z, b.z)
+            max(a.x, b.x),
+            max(a.y, b.y),
+            max(a.z, b.z)
         )
     }
 }
 
+fun Double.plus(vector3d: Vector3d) = Vector3d(this + vector3d.x, this + vector3d.y, this + vector3d.z)
+fun Double.minus(vector3d: Vector3d) = Vector3d(this - vector3d.x, this - vector3d.y, this - vector3d.z)
+fun Double.times(vector3d: Vector3d) = Vector3d(this * vector3d.x, this * vector3d.y, this * vector3d.z)
+fun Double.div(vector3d: Vector3d) = Vector3d(this / vector3d.x, this / vector3d.y, this / vector3d.z)
+
 infix fun Vector3d.o(other: Vector3d) = this dot other
 infix fun Vector3d.x(other: Vector3d) = this cross other
 operator fun Vector3d.rangeTo(b: Vector3d) = this distanceTo b
-fun min(a: Vector3d, b: Vector3d) = Vector3d(kotlin.math.min(a.x, b.x), kotlin.math.min(a.y, b.y), kotlin.math.min(a.z, b.z))
-fun max(a: Vector3d, b: Vector3d) = Vector3d(kotlin.math.max(a.x, b.x), kotlin.math.max(a.y, b.y), kotlin.math.max(a.z, b.z))
 infix fun Vector3d.directionTo(b: Vector3d) = (b - this).normalized()
 
 data class Vector3dDual(val x: Dual, val y: Dual, val z: Dual) {
@@ -370,9 +364,9 @@ data class Vector3dDual(val x: Dual, val y: Dual, val z: Dual) {
         fun of(vararg values: Vector3d) = Vector3dDual(values.asList())
 
         fun lerp(from: Vector3dDual, to: Vector3dDual, t: Dual) = Vector3dDual(
-            org.ageseries.libage.mathematics.lerp(from.x, to.x, t),
-            org.ageseries.libage.mathematics.lerp(from.y, to.y, t),
-            org.ageseries.libage.mathematics.lerp(from.z, to.z, t)
+            lerp(from.x, to.x, t),
+            lerp(from.y, to.y, t),
+            lerp(from.z, to.z, t)
         )
 
         fun lerp(from: Vector3d, to: Vector3d, t: Dual) = lerp(
@@ -432,13 +426,18 @@ data class Vector4d(val x: Double, val y: Double, val z: Double, val w: Double) 
         val unitW = Vector4d(0.0, 0.0, 0.0, 1.0)
 
         fun lerp(a: Vector4d, b: Vector4d, t: Double) = Vector4d(
-            org.ageseries.libage.mathematics.lerp(a.x, b.x, t),
-            org.ageseries.libage.mathematics.lerp(a.y, b.y, t),
-            org.ageseries.libage.mathematics.lerp(a.z, b.z, t),
-            org.ageseries.libage.mathematics.lerp(a.w, b.w, t)
+            lerp(a.x, b.x, t),
+            lerp(a.y, b.y, t),
+            lerp(a.z, b.z, t),
+            lerp(a.w, b.w, t)
         )
     }
 }
+
+fun Double.plus(vector4d: Vector4d) = Vector4d(this + vector4d.x, this + vector4d.y, this + vector4d.z, this + vector4d.w)
+fun Double.minus(vector4d: Vector4d) = Vector4d(this - vector4d.x, this - vector4d.y, this - vector4d.z, this - vector4d.w)
+fun Double.times(vector4d: Vector4d) = Vector4d(this * vector4d.x, this * vector4d.y, this * vector4d.z, this * vector4d.w)
+fun Double.div(vector4d: Vector4d) = Vector4d(this / vector4d.x, this / vector4d.y, this / vector4d.z, this / vector4d.w)
 
 infix fun Vector4d.o(other: Vector4d) = this dot other
 

@@ -1,3 +1,5 @@
+@file:Suppress("MemberVisibilityCanBePrivate", "LocalVariableName")
+
 package org.ageseries.libage.mathematics.geometry
 
 import org.ageseries.libage.mathematics.approxEq
@@ -185,14 +187,12 @@ data class BoundingBox2d(val min: Vector2d, val max: Vector2d) : BoundingBox<Bou
  * Represents a 3D Axis-Aligned Bounding Box (AABB).
  * */
 data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<BoundingBox3d> {
+    /**
+     * Constructs a [BoundingBox3d] from the components of the [min] and [max] vectors.
+     * */
     constructor(minX: Double, minY: Double, minZ: Double, width: Double, height: Double, depth: Double) : this(
         Vector3d(minX, minY, minZ),
         Vector3d(minX + width, minY + height, minZ + depth)
-    )
-
-    constructor(sphere: BoundingSphere3d) : this(
-        sphere.origin - Vector3d(sphere.radius),
-        sphere.origin + Vector3d(sphere.radius)
     )
 
     val isNaN get() = min.isNaN || max.isNaN
@@ -257,13 +257,31 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
         Vector3d.max(max, other.max)
     )
 
+    /**
+     * Creates a new bounding box from this one, extended to contain [point].
+     * */
+    infix fun including(point: Vector3d) = BoundingBox3d(
+        Vector3d.min(point, min),
+        Vector3d.max(point, max)
+    )
+
+    /**
+     * Creates a new bounding box from this one, extended to contain the [sphere].
+     * */
+    infix fun including(sphere: BoundingSphere3d) = BoundingBox3d(
+        Vector3d.min(sphere.origin - sphere.radius, min),
+        Vector3d.max(sphere.origin + sphere.radius, max)
+    )
+
     fun inflated(amountX: Double, amountY: Double, amountZ: Double) = BoundingBox3d(
         Vector3d(this.min.x - amountX, this.min.y - amountY, this.min.z - amountZ),
         Vector3d(this.max.x + amountX, this.max.y + amountY, this.max.z + amountZ)
     )
 
     fun inflated(amount: Vector3d) = inflated(amount.x, amount.y, amount.z)
+
     fun inflated(amount: Double) = inflated(amount, amount, amount)
+
     override fun inflatedBy(percent: Double) = inflated(width * percent, height * percent, depth * percent)
 
     /**
@@ -320,19 +338,75 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
         fun fromCenterSize(center: Vector3d, size: Double) : BoundingBox3d {
             val half = size * 0.5
 
-            return BoundingBox3d(
-                Vector3d(
-                    center.x - half,
-                    center.y - half,
-                    center.z - half
-                ),
-                Vector3d(
-                    center.x + half,
-                    center.y + half,
-                    center.z + half
-                )
-            )
+            return BoundingBox3d(center - half, center + half)
         }
+
+        /**
+         * Creates a bounding box that contains the [orientedBoundingBox].
+         * */
+        fun fromOrientedBoundingBox(orientedBoundingBox: OrientedBoundingBox3d) : BoundingBox3d {
+            var minX = Double.POSITIVE_INFINITY
+            var minY = Double.POSITIVE_INFINITY
+            var minZ = Double.POSITIVE_INFINITY
+            var maxX = Double.NEGATIVE_INFINITY
+            var maxY = Double.NEGATIVE_INFINITY
+            var maxZ = Double.NEGATIVE_INFINITY
+
+            orientedBoundingBox.forEachCorner { (x, y, z) ->
+                if(x < minX) minX = x
+                if(y < minY) minY = y
+                if(z < minZ) minZ = z
+                if(x > maxX) maxX = x
+                if(y > maxY) maxY = y
+                if(z > maxZ) maxZ = z
+            }
+
+            return BoundingBox3d(minX, minY, minZ, maxX, maxY, maxZ)
+        }
+
+        /**
+         * Constructs a [BoundingBox3d] that contains the [sphere].
+         * */
+        fun fromBoundingSphere(sphere: BoundingSphere3d) = BoundingBox3d(
+            sphere.origin - sphere.radius,
+            sphere.origin + sphere.radius
+        )
+
+        /**
+         * Creates a bounding box that contains all [points].
+         * */
+        fun fromPoints(points: Iterator<Vector3d>) : BoundingBox3d {
+            if(!points.hasNext()) {
+                return zero
+            }
+
+            val first = points.next()
+
+            var minX = first.x
+            var minY = first.y
+            var minZ = first.z
+            var maxX = first.x
+            var maxY = first.y
+            var maxZ = first.z
+
+            while (points.hasNext()) {
+                val (x, y, z) = points.next()
+
+                if(x < minX) minX = x
+                if(y < minY) minY = y
+                if(z < minZ) minZ = z
+                if(x > maxX) maxX = x
+                if(y > maxY) maxY = y
+                if(z > maxZ) maxZ = z
+            }
+
+            return BoundingBox3d(minX, minY, minZ, maxX, maxY, maxZ)
+        }
+
+        /**
+         * Creates a bounding box that contains all [points].
+         * */
+        fun fromPoints(points: Iterable<Vector3d>) = fromPoints(points.iterator())
     }
 }
 
@@ -352,11 +426,7 @@ data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) 
      * */
     constructor(transform: Pose3d, boundingBox: BoundingBox3d) : this(transform * boundingBox.center, transform.rotation, boundingBox.halfSize)
 
-    /**
-     * Constructs an OBB equivalent to [boundingBox] (the [transform] consist of [BoundingBox3d.center] and [Rotation3d.identity]).
-     * */
-    constructor(boundingBox: BoundingBox3d) : this(Pose3d(boundingBox.center, Rotation3d.identity), boundingBox.halfSize)
-
+    val center get() = transform.translation
     val width get() = halfSize.x * 2.0
     val height get() = halfSize.y * 2.0
     val depth get() = halfSize.z * 2.0
@@ -385,7 +455,7 @@ data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) 
     /**
      * Evaluates the mode of containment of the axis-aligned [box] inside this box.
      * */
-    fun evaluateContainment(box: BoundingBox3d) = evaluateContainment(OrientedBoundingBox3d(box))
+    fun evaluateContainment(box: BoundingBox3d) = evaluateContainment(createFromBoundingBox(box))
 
     /**
      * Evaluates the mode of containment of the [sphere] inside this box.
@@ -462,7 +532,7 @@ data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) 
     /**
      * Iterates the corners of this box.
      * */
-    inline fun corners(consumer: (Vector3d) -> Unit) {
+    inline fun forEachCorner(consumer: (Vector3d) -> Unit) {
         val rotation = transform.rotation
         val hx = (rotation * Vector3d.unitX) * halfSize.x
         val hy = (rotation * Vector3d.unitY) * halfSize.y
@@ -589,6 +659,14 @@ data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) 
 
             return ContainmentMode.Intersected
         }
+
+        /**
+         * Constructs an OBB equivalent to [boundingBox] (the [transform] consist of [BoundingBox3d.center] and [Rotation3d.identity]).
+         * */
+        fun createFromBoundingBox(boundingBox: BoundingBox3d) = OrientedBoundingBox3d(
+            Pose3d(boundingBox.center, Rotation3d.identity),
+            boundingBox.halfSize
+        )
     }
 }
 
@@ -936,6 +1014,30 @@ data class Plane3d(val normal: Vector3d, val d: Double) {
     }
 
     /**
+     * Evaluates the mode of intersection with the [box].
+     * */
+    fun evaluateIntersection(box: OrientedBoundingBox3d) : PlaneIntersectionType {
+        val distance = signedDistanceToPoint(box.center)
+
+        val localNormal = box.transform.rotation.inverse * normal
+
+        val dx = abs(box.halfSize.x * localNormal.x)
+        val dy = abs(box.halfSize.y * localNormal.y)
+        val dz = abs(box.halfSize.z * localNormal.z)
+        val radius = dx + dy + dz
+
+        if (distance > radius) {
+            return PlaneIntersectionType.Positive
+        }
+
+        if (distance < -radius) {
+            return PlaneIntersectionType.Negative
+        }
+
+        return PlaneIntersectionType.Intersects
+    }
+
+    /**
      * Evaluates the mode of intersection with the [sphere].
      * */
     fun evaluateIntersection(sphere: BoundingSphere3d) = evaluateIntersection(sphere.origin, sphere.radius)
@@ -945,6 +1047,12 @@ data class Plane3d(val normal: Vector3d, val d: Double) {
      * @return True, if the plane cuts the box. Otherwise, false.
      * */
     infix fun intersectsWith(box: BoundingBox3d) = evaluateIntersection(box) == PlaneIntersectionType.Intersects
+
+    /**
+     * Checks if the plane intersects with the [box].
+     * @return True, if the plane cuts the box. Otherwise, false.
+     * */
+    infix fun intersectsWith(box: OrientedBoundingBox3d) = evaluateIntersection(box) == PlaneIntersectionType.Intersects
 
     /**
      * Checks if the plane intersects with the [sphere].
