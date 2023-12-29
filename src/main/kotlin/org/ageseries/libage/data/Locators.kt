@@ -293,6 +293,24 @@ class Locator internal constructor(val dispatcher: LocatorDispatcher<*>, interna
     }
 
     /**
+     * Checks if the locator has the specified shard.
+     * @return True, if the locator has a shard with id [shardID]. Otherwise, false.
+     * */
+    fun has(shardID: Byte) = archetype.binarySearch(shardID) >= 0
+
+    /**
+     * Checks if the locator has a shard with the specified [definition].
+     * @return True, if the locator has a shard with the specified [definition]. Otherwise, false.
+     * */
+    inline fun<reified T : Any> has(definition: LocatorShardDefinition<T>): Boolean {
+        require(definition.dispatcher === dispatcher) {
+            "Illegal use of other dispatcher"
+        }
+
+        return has(definition.shardID)
+    }
+
+    /**
      * Serializes this locator.
      * @return A byte array with the data stored in this locator, consisting of [imageSize] bytes.
      * */
@@ -357,3 +375,25 @@ class Locator internal constructor(val dispatcher: LocatorDispatcher<*>, interna
 
     override fun hashCode() = cachedHashCode
 }
+
+
+/**
+ * Gets the locator. Throws an exception if it is not present.
+ * */
+inline fun<reified T : Any> Locator.requireLocator(definition: LocatorShardDefinition<T>, message: () -> String) : T {
+    val value = this.get(definition)
+
+    require(value != null) {
+        message()
+    }
+
+    return value
+}
+
+/**
+ * Gets the locator. Throws an exception if it is not present.
+ * */
+inline fun<reified T : Any> Locator.requireLocator(definition: LocatorShardDefinition<T>) =
+    this.requireLocator(definition) {
+        "Did not have required locator ${T::class}"
+    }

@@ -3,11 +3,11 @@ package org.eln2.libelectric.data
 import org.ageseries.libage.data.LocatorDispatcher
 import org.ageseries.libage.data.LocatorSerializationException
 import org.ageseries.libage.data.put
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.ageseries.libage.data.requireLocator
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.lang.IllegalArgumentException
+import kotlin.IllegalArgumentException
 
 internal class LocatorTest {
     private object InvalidSerializers : LocatorDispatcher<InvalidSerializers>() {
@@ -238,6 +238,35 @@ internal class LocatorTest {
             assertEquals(locator.get(Dispatcher.INT1), 1)
             assertEquals(locator.get(Dispatcher.INT2), 2)
             assertEquals(locator.get(Dispatcher.INT3), null)
+        }
+    }
+
+    @Test
+    fun has() {
+        val locator = Dispatcher.buildLocator {
+            it.put(INT1, 1)
+            it.put(INT2, 2)
+        }
+
+        assertTrue(locator.has(Dispatcher.INT1))
+        assertTrue(locator.has(Dispatcher.INT2))
+        assertFalse(locator.has(Dispatcher.INT3))
+    }
+
+    @Test
+    fun requireLocator() {
+        val locator = Dispatcher.buildLocator {
+            it.put(INT1, 1)
+            it.put(INT2, 2)
+        }
+
+        assertDoesNotThrow {
+            locator.requireLocator(Dispatcher.INT1)
+            locator.requireLocator(Dispatcher.INT2)
+        }
+
+        assertThrows<IllegalArgumentException> {
+            locator.requireLocator(Dispatcher.INT3)
         }
     }
 }
