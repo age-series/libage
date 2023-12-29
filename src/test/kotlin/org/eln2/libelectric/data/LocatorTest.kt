@@ -269,4 +269,29 @@ internal class LocatorTest {
             locator.requireLocator(Dispatcher.INT3)
         }
     }
+
+    @Test
+    fun equality() {
+        val a = Dispatcher.buildLocator {
+            it.put(INT1, 1)
+            it.put(INT2, 2)
+        }
+
+        val b = Dispatcher.buildLocator {
+            it.put(INT1, 1)
+            it.put(INT2, 2)
+        }
+
+        assertEquals(a, b)
+        assertTrue(a.toImage().contentEquals(b.toImage()))
+
+        val c = Dispatcher.buildLocator {
+            it.put(INT1, 1)
+            it.put(INT2, 2)
+            it.put(INT3, 3)
+        }
+
+        assertNotEquals(a, c)
+        assertNotEquals(b, c)
+    }
 }
