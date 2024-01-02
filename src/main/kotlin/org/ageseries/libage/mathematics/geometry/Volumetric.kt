@@ -435,6 +435,18 @@ data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) 
      * */
     val surface get() = 2.0 * (width * height + depth * height + width * depth)
 
+
+    fun inflated(amountX: Double, amountY: Double, amountZ: Double) = OrientedBoundingBox3d(
+        transform,
+        Vector3d(this.halfSize.x + amountX, this.halfSize.y + amountY, this.halfSize.z - amountZ),
+    )
+
+    fun inflated(amount: Vector3d) = inflated(amount.x, amount.y, amount.z)
+
+    fun inflated(amount: Double) = inflated(amount, amount, amount)
+
+    fun inflatedBy(percent: Double) = inflated(width * percent, height * percent, depth * percent)
+
     /**
      * Transitions the [point] into the local space of the bounding box.
      * */
@@ -664,13 +676,55 @@ data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) 
 }
 
 /**
+ * Represents a 3D bounding sphere.
+ * */
+data class BoundingSphere3d(val origin: Vector3d, val radius: Double) {
+    val radiusSqr get() = radius * radius
+
+    /**
+     * Constructs a [BoundingSphere3d] from the [box].
+     * */
+    constructor(box: BoundingBox3d) : this(box.center, box.center..box.max)
+
+    /**
+     * Computes the union of this sphere and the [other] sphere.
+     * @return A sphere that contains both this sphere and the [other] sphere.
+     * */
+    infix fun unionWith(other: BoundingSphere3d): BoundingSphere3d {
+        val dxAB = other.origin - this.origin
+        val distance = dxAB.norm
+
+        if (radius + other.radius >= distance) {
+            if (radius - other.radius >= distance) {
+                return this
+            } else if (other.radius - radius >= distance) {
+                return other
+            }
+        }
+
+        val direction = dxAB / distance
+        val a = min(-radius, distance - other.radius)
+        val r = (max(radius, distance + other.radius) - a) * 0.5
+
+        return BoundingSphere3d(this.origin + direction * (r + a), r)
+    }
+
+    /**
+     * Checks if the [point] is inside the sphere.
+     * */
+    fun contains(point: Vector3d) = (origin distanceToSqr point) < radiusSqr
+
+    override fun toString() = "$origin r=$radius"
+}
+
+/**
  * Describes an intersection between a ray and a volume.
  * [entry] and [exit] are the arguments to the ray equation that will yield the two points of intersection.
  * */
 data class RayIntersection(val entry: Double, val exit: Double)
 
 /**
- * Represents a line segment bounded by the [origin] and with the specified [direction].
+ * Represents a 3D line segment bounded by the [origin] and with the specified [direction].
  * */
 data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
     /**
@@ -691,40 +745,86 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
     infix fun intersectionWith(plane: Plane3d) = this.origin + this.direction * -((plane.normal o this.origin) + plane.d) / (plane.normal o this.direction)
 
     /**
-     * Evaluates the intersection with the [obb].
+     * Evaluates the intersection with the [box].
      * @return A [RayIntersection], if an intersection exists. Otherwise, null.
      * */
-    infix fun intersectionWith(obb: BoundingBox3d): RayIntersection? {
-        var tMin = Double.NEGATIVE_INFINITY
-        var tMax = Double.POSITIVE_INFINITY
+    infix fun intersectionWith(box: BoundingBox3d) : RayIntersection? {
+        var t1 = 0.0
+        var t2 = Double.POSITIVE_INFINITY
 
-        if (this.direction.x != 0.0) {
-            val tx1 = (obb.min.x - this.origin.x) / this.direction.x
-            val tx2 = (obb.max.x - this.origin.x) / this.direction.x
-            tMin = max(tMin, min(tx1, tx2))
-            tMax = min(tMax, max(tx1, tx2))
-        }
-
-        if (this.direction.y != 0.0) {
-            val ty1 = (obb.min.y - this.origin.y) / this.direction.y
-            val ty2 = (obb.max.y - this.origin.y) / this.direction.y
-            tMin = max(tMin, min(ty1, ty2))
-            tMax = min(tMax, max(ty1, ty2))
-        }
-
-        if (this.direction.z != 0.0) {
-            val tz1 = (obb.min.z - this.origin.z) / this.direction.z
-            val tz2 = (obb.max.z - this.origin.z) / this.direction.z
-            tMin = max(tMin, min(tz1, tz2))
-            tMax = min(tMax, max(tz1, tz2))
-        }
-
-        return if (tMax >= tMin) {
-            RayIntersection(tMin, tMax)
+        if (direction.x.approxEq(0.0)) {
+            if (origin.x < box.min.x || origin.x > box.max.x) {
+                return null
+            }
         }
         else {
-            null
+            val r = 1.0 / direction.x
+            var a = (box.min.x - origin.x) * r
+            var b = (box.max.x - origin.x) * r
+
+            if (a > b) {
+                val temp = a
+                a = b
+                b = temp
+            }
+
+            t1 = max(a, t1)
+            t2 = min(b, t2)
+
+            if (t1 > t2) {
+                return null
+            }
         }
+
+        if (direction.y.approxEq(0.0)) {
+            if (origin.y < box.min.y || origin.y > box.max.y) {
+                return null
+            }
+        }
+        else {
+            val r = 1.0 / direction.y
+            var a = (box.min.y - origin.y) * r
+            var b = (box.max.y - origin.y) * r
+
+            if (a > b) {
+                val temp = a
+                a = b
+                b = temp
+            }
+
+            t1 = max(a, t1)
+            t2 = min(b, t2)
+
+            if (t1 > t2) {
+                return null
+            }
+        }
+
+        if (direction.z.approxEq(0.0)) {
+            if (origin.z < box.min.z || origin.z > box.max.z) {
+                return null
+            }
+        }
+        else {
+            val r = (1.0 / direction.z)
+            var a = (box.min.z - origin.z) * r
+            var b = (box.max.z - origin.z) * r
+
+            if (a > b) {
+                val temp = a
+                a = b
+                b = temp
+            }
+
+            t1 = max(a, t1)
+            t2 = min(b, t2)
+
+            if (t1 > t2) {
+                return null
+            }
+        }
+
+        return RayIntersection(t1, t2)
     }
 
     /**
@@ -840,8 +940,32 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
             }
         }
 
-        return RayIntersection(tMin, tMax)
+        return if(tMin in 0.0..tMax) {
+            RayIntersection(tMin, tMax)
+        }
+        else {
+            null
+        }
     }
+
+    /**
+     * Checks if the ray intersects with the [plane].
+     * */
+    infix fun intersectsWith(plane: Plane3d) : Boolean {
+        val intersection = intersectionWith(plane)
+
+        return !intersection.isNaN && !intersection.isInfinity
+    }
+
+    /**
+     * Checks if the ray intersects with the [box].
+     * */
+    infix fun intersectsWith(box: BoundingBox3d) = intersectionWith(box) != null
+
+    /**
+     * Checks if the ray intersects with the [box].
+     * */
+    infix fun intersectsWith(box: OrientedBoundingBox3d) = intersectionWith(box) != null
 
     companion object {
         /**
@@ -853,45 +977,97 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
 }
 
 /**
- * Represents a 3D bounding sphere.
+ * Represents 3D a line segment bounded by 2 points along it.
  * */
-data class BoundingSphere3d(val origin: Vector3d, val radius: Double) {
-    val radiusSqr get() = radius * radius
+data class Line3d(val origin: Vector3d, val direction: Vector3d, val length: Double) {
+    /**
+     * True, if the [origin] is not infinite or NaN, the [direction] is a ~unit vector, and the distance is not infinite or NaN. Otherwise, false.
+     * */
+    val isValid get() = !origin.isNaN && !origin.isInfinity && direction.isUnit && !length.isNaN() && !length.isInfinite()
 
     /**
-     * Constructs a [BoundingSphere3d] from the [box].
+     * Evaluates a parametric equation of the line to get the point in space.
+     * This will yield [origin] at [t]=0 and [end] at [t]=[length].
      * */
-    constructor(box: BoundingBox3d) : this(box.center, box.center..box.max)
+    fun evaluate(t: Double) = origin + direction * t
 
     /**
-     * Computes the union of this sphere and the [other] sphere.
-     * @return A sphere that contains both this sphere and the [other] sphere.
+     * Gets the end point of the line.
      * */
-    infix fun unionWith(other: BoundingSphere3d): BoundingSphere3d {
-        val dxAB = other.origin - this.origin
-        val distance = dxAB.norm
+    val end get() = evaluate(length)
 
-        if (radius + other.radius >= distance) {
-            if (radius - other.radius >= distance) {
-                return this
-            } else if (other.radius - radius >= distance) {
-                return other
-            }
+    /**
+     * Gets a ray starting at [origin] towards [end].
+     * */
+    val asRay get() = Ray3d(origin, direction)
+
+    /**
+     * Evaluates the intersection with the [box].
+     * @return A [RayIntersection], if an intersection exists. Otherwise, null. *Non-null results do not guarantee that the exit point is within this line segment.*
+     * */
+    infix fun intersectionWith(box: BoundingBox3d): RayIntersection? {
+        val intersection = (this.asRay intersectionWith box)
+            ?: return null
+
+        if(intersection.entry !in 0.0..length) {
+            return null
         }
 
-        val direction = dxAB / distance
-        val a = min(-radius, distance - other.radius)
-        val r = (max(radius, distance + other.radius) - a) * 0.5
-
-        return BoundingSphere3d(this.origin + direction * (r + a), r)
+        return intersection
     }
 
     /**
-     * Checks if the [point] is inside the sphere.
+     * Evaluates the intersection with the [box].
+     * @return A [RayIntersection], if an intersection exists. Otherwise, null. *Non-null results do not guarantee that the exit point is within this line segment.*
      * */
-    fun contains(point: Vector3d) = (origin distanceToSqr point) < radiusSqr
+    infix fun intersectionWith(box: OrientedBoundingBox3d): RayIntersection? {
+        val intersection = (this.asRay intersectionWith box)
+            ?: return null
 
-    override fun toString() = "$origin r=$radius"
+        if(intersection.entry !in 0.0..length) {
+            return null
+        }
+
+        return intersection
+    }
+
+    /**
+     * Checks if the ray intersects with the [box].
+     * */
+    infix fun intersectsWith(box: BoundingBox3d) = intersectionWith(box) != null
+
+    /**
+     * Checks if the ray intersects with the [box].
+     * */
+    infix fun intersectsWith(box: OrientedBoundingBox3d) = intersectionWith(box) != null
+
+    companion object {
+        /**
+         * Creates a line from the a [start] point and an [end] point.
+         * */
+        fun fromStartEnd(start: Vector3d, end: Vector3d) : Line3d {
+            val dx = end - start
+            val distance = dx.norm
+            val direction = dx / distance
+
+            return Line3d(start, direction, distance)
+        }
+    }
+}
+
+/**
+ * Represents a 3D cylinder, whose two ends are determined by a line segment, [extent], and whose radius is [radius].
+ * */
+data class Cylinder3d(val extent: Line3d, val radius: Double) {
+    /**
+     * Checks if the cylinder intersects with the [box].
+     * */
+    infix fun intersectsWith(box: BoundingBox3d) = extent intersectsWith box.inflated(radius)
+
+    /**
+     * Checks if the cylinder intersects with the [box].
+     * */
+    infix fun intersectsWith(box: OrientedBoundingBox3d) = extent intersectsWith box.inflated(radius)
 }
 
 /**
