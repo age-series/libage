@@ -997,6 +997,11 @@ data class Line3d(val origin: Vector3d, val direction: Vector3d, val length: Dou
     val end get() = evaluate(length)
 
     /**
+     * Gets the center point of the line.
+     * */
+    val center get() = evaluate(0.5 * length)
+
+    /**
      * Gets a ray starting at [origin] towards [end].
      * */
     val asRay get() = Ray3d(origin, direction)
@@ -1059,6 +1064,11 @@ data class Line3d(val origin: Vector3d, val direction: Vector3d, val length: Dou
  * Represents a 3D cylinder, whose two ends are determined by a line segment, [extent], and whose radius is [radius].
  * */
 data class Cylinder3d(val extent: Line3d, val radius: Double) {
+    /**
+     * Gets the center point of the cylinder.
+     * */
+    val center get() = extent.center
+
     /**
      * Checks if the cylinder intersects with the [box].
      * */

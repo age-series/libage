@@ -390,6 +390,29 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
         )
 
         fun interpolate(r0: Rotation3d, r1: Rotation3d, t: Double) = exp((r1 / r0).ln() * t) * r0
+
+        fun createFromTwoVectors(from: Vector3d, to: Vector3d) : Rotation3d {
+            val c = (from o to)
+
+            if(c.approxEq(-1.0, GEOMETRY_NORMALIZED_EPS)) {
+                var x = from.y
+                var y = -from.x
+                var z = 0.0
+
+                if (x * x + y * y == 0.0) {
+                    x = 0.0
+                    y = from.z
+                    z = -from.y
+                }
+
+                return Rotation3d(x, y, z, 0.0)
+            }
+
+            val (x, y, z) = (from x to)
+            val w = 1.0 + c
+            val n = 1.0 / sqrt((x * x) + (y * y) + (z * z) + (w * w))
+            return Rotation3d(x * n, y * n, z * n, w * n)
+        }
     }
 }
 
