@@ -362,6 +362,50 @@ data class BoundingBox3d(val min: Vector3d, val max: Vector3d) : BoundingBox<Bou
             sphere.origin + sphere.radius
         )
 
+
+        /**
+         * Constructs a [BoundingBox3d] that contains the [cylinder].
+         * */
+        fun fromCylinder(cylinder: Cylinder3d) : BoundingBox3d {
+            val a = cylinder.extent.origin
+            val b = cylinder.extent.end
+
+            val (ax, ay, az) = a
+            val (bx, by, bz) = b
+
+            var dx2 = ax - bx
+            var dy2 = ay - by
+            var dz2 = az - bz
+            dx2 *= dx2
+            dy2 *= dy2
+            dz2 *= dz2
+
+            val k = 1.0 / (dx2 + dy2 + dz2)
+
+            if(k.isInfinite() || k.isNaN()) {
+                val center = cylinder.center
+                return BoundingBox3d(center, center)
+            }
+
+            val r = cylinder.radius
+            val ix = r * sqrt(k * (dy2 + dz2))
+            val iy = r * sqrt(k * (dx2 + dz2))
+            val iz = r * sqrt(k * (dx2 + dy2))
+
+            return BoundingBox3d(
+                Vector3d(
+                    min(ax, bx) - ix,
+                    min(ay, by) - iy,
+                    min(az, bz) - iz,
+                ),
+                Vector3d(
+                    max(ax, bx) + ix,
+                    max(ay, by) + iy,
+                    max(az, bz) + iz,
+                )
+            )
+        }
+
         /**
          * Creates a bounding box that contains all [points].
          * */
