@@ -5,14 +5,12 @@ import org.ageseries.libage.debug.mnaPrintln
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
-import org.ageseries.libage.sim.electrical.mna.component.CurrentSource
-import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.ageseries.libage.sim.electrical.mna.component.Capacitor
-import org.ageseries.libage.sim.electrical.mna.component.Inductor
+import org.ageseries.libage.sim.electrical.mna.component.*
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 internal class MNATests {
 
@@ -24,6 +22,21 @@ internal class MNATests {
         val percentError = abs((simulated - actual) / actual)
         dprintln("sim = $simulated, act = $actual, %err = $percentError")
         return percentError < tolerance
+    }
+
+    /**
+     * A function that runs a block repeatedly, an arbitrary number of times, to check that a condition should be
+     * idempotent.
+     */
+    fun idempotent(trials: Int = 3, block: () -> Unit) {
+        for(i in 0 .. trials) {
+            try {
+                block()
+            } catch (e: Throwable) {
+                println("On iteration ${i+1}:")
+                throw e
+            }
+        }
     }
 
     @Test
@@ -41,9 +54,11 @@ internal class MNATests {
         vs.potential = 10.0
         r.resistance = 10.0
 
-        assert(c.step(0.05))
-        mnaPrintln(c)
-        assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        idempotent {
+            assert(c.step(0.05))
+            mnaPrintln(c)
+            assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        }
     }
 
     @Test
@@ -61,11 +76,13 @@ internal class MNATests {
         cs.current = -1.0
         r.resistance = 10.0
 
-        assert(c.step(0.05))
-        mnaPrintln(c)
-        assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
-        assertEquals(true, (r.potential > 9.99) and (r.current < 10.01))
-        assertEquals(true, (cs.potential > 9.99) and (cs.current < 10.01))
+        idempotent {
+            assert(c.step(0.05))
+            mnaPrintln(c)
+            assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+            assertEquals(true, (r.potential > 9.99) and (r.current < 10.01))
+            assertEquals(true, (cs.potential > 9.99) and (cs.current < 10.01))
+        }
     }
 
     @Test
@@ -85,9 +102,15 @@ internal class MNATests {
         r2.connect(0, vs, 0)
         vs.ground(1)
 
-        assert(circuit.step(0.5))
-        assert(within_tolerable_error(r1.current, r2.current, 0.001))
-        assert(within_tolerable_error(r1.current, 1.0, 0.01))
+        idempotent {
+            println("pre-solve")
+            mnaPrintln(circuit)
+            assert(circuit.step(0.5))
+            println("post-solve")
+            mnaPrintln(circuit)
+            assert(within_tolerable_error(r1.current, r2.current, 0.001))
+            assert(within_tolerable_error(r1.current, 1.0, 0.01))
+        }
     }
 
     @Test
@@ -105,13 +128,17 @@ internal class MNATests {
         vs.potential = 10.0
         r.resistance = 10.0
 
-        assert(c.step(0.05))
-        assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        idempotent {
+            assert(c.step(0.05))
+            assertEquals(true, (r.current > 0.99) and (r.current < 1.01))
+        }
 
         r.resistance = 50.0
 
-        assert(c.step(0.05))
-        assertEquals(true, (r.current > 0.19) and (r.current < 0.21))
+        idempotent {
+            assert(c.step(0.05))
+            assertEquals(true, (r.current > 0.19) and (r.current < 0.21))
+        }
     }
 
     @Test
@@ -132,17 +159,21 @@ internal class MNATests {
         r1.resistance = 10.0
         r2.resistance = 20.0
 
-        assert(c.step(0.05))
-        assert((r1.current > 0.333) and (r1.current < 0.334))
-        assert((r2.current > 0.333) and (r2.current < 0.334))
-        assert(((r1.node(1)?.potential ?: 0.0) > 3.333) and ((r1.node(1)?.potential ?: 0.0) < 3.334))
+        idempotent {
+            assert(c.step(0.05))
+            assert((r1.current > 0.333) and (r1.current < 0.334))
+            assert((r2.current > 0.333) and (r2.current < 0.334))
+            assert(((r1.node(1)?.potential ?: 0.0) > 3.333) and ((r1.node(1)?.potential ?: 0.0) < 3.334))
+        }
 
         r2.resistance = 50.0
 
-        assert(c.step(0.05))
-        assert((r1.current > 0.1666) and (r1.current < 0.1667))
-        assert((r2.current > 0.1666) and (r2.current < 0.1667))
-        assert(((r1.node(1)?.potential ?: 0.0)> 1.666) and ((r1.node(1)?.potential ?: 0.0) < 1.667))
+        idempotent {
+            assert(c.step(0.05))
+            assert((r1.current > 0.1666) and (r1.current < 0.1667))
+            assert((r2.current > 0.1666) and (r2.current < 0.1667))
+            assert(((r1.node(1)?.potential ?: 0.0) > 1.666) and ((r1.node(1)?.potential ?: 0.0) < 1.667))
+        }
     }
 
     @Test
@@ -169,15 +200,20 @@ internal class MNATests {
         r2.connect(POSITIVE, r1, POSITIVE)
         r2.connect(NEGATIVE, r1, NEGATIVE)
 
-        assert(c.step(0.5))
-        assertEquals(r2.current, r1.current, 1e-9)
-        assertEquals(r1.current, current, 1e-9)
-        assertEquals(vs.current, current * 2.0, 1e-9)
+        idempotent {
+            assert(c.step(0.5))
+            assertEquals(r2.current, r1.current, 1e-9)
+            assertEquals(r1.current, current, 1e-9)
+            assertEquals(vs.current, current * 2.0, 1e-9)
+        }
 
         c.remove(r2)
-        assert(c.step(0.5))
-        assertEquals(r1.current, current, 1e-9)
-        assertEquals(r2.circuit, null)
+
+        idempotent {
+            assert(c.step(0.5))
+            assertEquals(r1.current, current, 1e-9)
+            assertEquals(r2.circuit, null)
+        }
     }
 
     @Test
@@ -308,10 +344,12 @@ internal class MNATests {
         vn.connect(rn)
         vn.ground()
 
-        assert(c.step(0.05))
-        mnaPrintln(c)
-        assert(r.current > 0.99 && r.current < 1.01)
-        assert(vs.current > 0.99 && vs.current < 1.01)
+        idempotent {
+            assert(c.step(0.05))
+            mnaPrintln(c)
+            assert(r.current > 0.99 && r.current < 1.01)
+            assert(vs.current > 0.99 && vs.current < 1.01)
+        }
     }
 
     @Test
@@ -333,5 +371,186 @@ internal class MNATests {
         val output = c.toDot()
 
         assert(output.length > 1)
+    }
+
+    @Test
+    fun lineOfEqualResistors() {
+        val res = 10.0
+        val v = 5.0
+
+        val cl = Circuit()
+        val l = Line()
+        val vsl = VoltageSource().apply { potential = v }
+        cl.add(vsl, l)
+        vsl.negRef.connect(l.negRef)
+        vsl.posRef.connect(l.posRef)
+        vsl.negRef.ground()
+
+        val parts = mutableListOf<Line.Part>()
+
+        for(number in 1 .. 10) {
+            val cr = Circuit()
+            val vsr = VoltageSource().apply { potential = v }
+            cr.add(vsr)
+            vsr.negRef.ground()
+            var lastr = vsr.posRef
+            val resistors = (0 until number).map {
+                Resistor().apply {
+                    cr.add(this)
+                    resistance = res
+                    posRef.connect(lastr)
+                    lastr = negRef
+                }
+            }
+            lastr.connect(vsr.negRef)
+
+            parts.add(l.add(l.size, res))
+
+            cl.step(1.0)
+            cr.step(1.0)
+
+            parts.zip(resistors).forEach { (part, resistor) ->
+                assert(within_tolerable_error(part.potential, resistor.potential, 1e-9))
+                assert(within_tolerable_error(part.current, resistor.current, 1e-9))
+                assert(within_tolerable_error(part.power, resistor.power, 1e-9))
+            }
+        }
+    }
+
+    @Test
+    fun lineMutation() {
+        val nomr = 10.0
+        val c = Circuit()
+        val vs = VoltageSource().apply { potential = 5.0 }
+        val l = Line()
+        c.add(vs, l)
+        val parta = l.add(l.size, nomr)
+        val partb = l.add(l.size, nomr)
+        c.step(1.0)
+        assertEquals(parta.power, partb.power)
+        assertEquals(parta.current, partb.current)
+        assertEquals(parta.potential, partb.potential)
+        val factor = 2.0
+        parta.resistance = factor * nomr
+        c.step(1.0)
+        assertEquals(parta.power * factor, partb.power)
+        assertEquals(parta.current, partb.current)
+        assertEquals(parta.potential, factor * partb.potential)
+    }
+
+    @Test
+    fun zeroOnInvalid() {
+        val c = Circuit()
+        val r = Resistor().apply { resistance = 10.0 }
+        val v = VoltageSource().apply { potential = 5.0 }
+        c.add(r, v)
+        r.posRef.connect(v.posRef)
+        r.negRef.connect(v.negRef)
+        v.negRef.ground()
+        assert(c.step(0.05))
+        assert(r.power > 0.0) { "Power: ${r.power}" }
+        // Now float the circuit, failing to simulate
+        v.unlink()
+        r.unlink()
+        r.posRef.connect(v.posRef)
+        r.negRef.connect(v.negRef)
+        assert(!c.step(0.05))
+        assertEquals(r.power, 0.0)
+        assertEquals(r.potential, 0.0)
+        assertEquals(v.current, 0.0)
+        // Ground and be sure this recovers
+        v.negRef.ground()
+        assert(c.step(0.05))
+        assert(r.power > 0.0)
+    }
+
+    @Test
+    fun powerPotentialSourceConvergence() {
+        val c = Circuit()
+        val r = Resistor().apply { resistance = 10.0 }
+        val s = PowerVoltageSource().apply {
+            potentialMax = 50.0
+            powerIdeal = 10.0
+        }
+        c.add(r, s)
+        r.posRef.connect(s.posRef)
+        r.negRef.connect(s.negRef)
+        s.negRef.ground()
+        // P = E^2 / R -> E = +/-sqrt(PR)
+        val correctPotential = { power: Double -> sqrt(abs(power) * r.resistance) }
+        val tolerance = 0.000000001  // one perbillion error
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.potential, correctPotential(s.power), tolerance))  // should be 10V
+        }
+        r.resistance = 40.0
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.potential, correctPotential(s.power), tolerance))  // should be 20V
+        }
+        r.resistance = 490.0
+        idempotent {
+            assert(c.step(0.05))
+            // should be 70V but we can't reach that because of the 50V max
+            assert(within_tolerable_error(s.potential, s.potentialMax!!, tolerance))
+            assert(within_tolerable_error(abs(s.power), (s.potential * s.potential) / r.resistance, tolerance))
+        }
+        s.potentialMax = null  // abolish that limit so the rules are as usual
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.potential, correctPotential(s.power), tolerance))  // should be 70V
+        }
+    }
+
+    @Test
+    fun powerCurrentSourceConvergence() {
+        val c = Circuit()
+        val r = Resistor().apply { resistance = 10.0 }
+        val s = PowerCurrentSource().apply {
+            currentMax = 5.0
+            powerIdeal = 10.0
+        }
+        c.add(r, s)
+        r.posRef.connect(s.posRef)
+        r.negRef.connect(s.negRef)
+        s.negRef.ground()
+        // P = RI^2 -> E = +/-sqrt(P / R)
+        val correctCurrent = { power: Double -> sqrt(abs(power) / r.resistance) }
+        val tolerance = 0.000000001  // one perbillion error
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.current, correctCurrent(s.power), tolerance))  // should be 1A
+        }
+        r.resistance = 2.5
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.current, correctCurrent(s.power), tolerance))  // should be 2A
+        }
+        r.resistance = 0.15625
+        idempotent {
+            assert(c.step(0.05))
+            // should be 8A but we can't reach that because of the 5A max
+            assert(within_tolerable_error(s.current, s.currentMax!!, tolerance))
+            assert(within_tolerable_error(abs(s.power), (s.current * s.current) * r.resistance, tolerance))
+        }
+        s.currentMax = null  // abolish that limit so the rules are as usual
+        idempotent {
+            assert(c.step(0.05))
+            assert(within_tolerable_error(abs(s.power), s.powerIdeal, tolerance))
+            assert(within_tolerable_error(s.current, correctCurrent(s.power), tolerance))  // should be 8A
+        }
+    }
+
+    companion object {
+        @JvmStatic
+        @BeforeAll
+        fun setDebug() {
+            System.setProperty("mods.eln.debug", "1")
+        }
     }
 }

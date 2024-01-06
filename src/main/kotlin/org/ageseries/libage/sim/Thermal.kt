@@ -1,39 +1,53 @@
-package org.ageseries.libage.sim.thermal
+@file:Suppress("MemberVisibilityCanBePrivate")
 
-import org.ageseries.libage.data.mutableMultiMapOf
-import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.Scale
+package org.ageseries.libage.sim
+
+import org.ageseries.libage.data.*
 import java.util.*
+import java.util.function.Supplier
+import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * A temperature.
- *
- * The inner unit is always Kelvin; conversions are available as properties and methods.
+ * The Stefan-Boltzmann Constant, in W/m^2K^4, the proportionality constant of emission power of a black-body radiator.
  */
-@JvmInline
-value class Temperature(val kelvin: Double) {
-    /**
-     * Return this temperature on the given [Scale].
-     */
-    fun to(scale: Scale): Double = scale.map(kelvin)
+const val STEFAN_BOLTZMANN_CONSTANT: Double = 5.670373e-8
 
-    operator fun plus(rhs: Temperature) = Temperature(kelvin + rhs.kelvin)
-    operator fun minus(rhs: Temperature) = Temperature(kelvin - rhs.kelvin)
-    operator fun times(rhs: Double) = Temperature(kelvin * rhs)
-    operator fun div(rhs: Double) = Temperature(kelvin / rhs)
+/**
+ * The number of steradians subtended by a sphere--the solid angle of a perfectly-isotropic transmitter.
+ */
+const val FULL_STERADIANS: Double = PI * 4
 
-    operator fun compareTo(rhs: Temperature) = kelvin.compareTo(rhs.kelvin)
+/**
+ * Emission power of a surface with the given area at this temperature, in W.
+ *
+ * This isn't going to be equivalent to the "brightness", since one needs to take the spectral density and map it
+ * through a "luminosity function". However, if one is feeling lazy, you can just equate this to lumens, and divide
+ * through by [FULL_STERADIANS] to get candela.
+ */
+fun Quantity<Temperature>.emissionPower(surfaceArea: Double): Double = value.pow(4) * surfaceArea * STEFAN_BOLTZMANN_CONSTANT
 
-    override fun toString() = ThermalUnits.KELVIN.display(kelvin)
+/**
+ * Emission color of a black body with this temperature.
+ *
+ * No correction for power is performed, so the result is always at maximum brightness. Any real use should consider
+ * scaling brightness appropriately by [emissionPower].
+ */
+val Quantity<Temperature>.emissionColor: CIE.XYZ31 get() {
+    val t = value.coerceIn(1000.0, 15000.0)
+    val t2 = t * t
 
-    companion object {
-        /**
-         * Return a Temperature given a measurement on a different [Scale].
-         */
-        fun from(temp: Double, scale: Scale) = Temperature(scale.unmap(temp))
-    }
+    val u1 = 0.860117757 + 1.54118254e-4 * t + 1.28641212e-7 * t2
+    val u2 = 1 + 8.42420235e-4 * t + 7.08145163e-7 * t2
+    val v1 = 0.317398726 + 4.22806245e-5 * t + 4.20481691e-8 * t2
+    val v2 = 1f - 2.89741816e-5 * t + 1.61456063e-7 * t2
+
+    return CIE.UVW60.fromuvY(
+        u1 / u2,
+        v1 / v2,
+        1.0,
+    ).asXYZ31
 }
 
 /**
@@ -45,48 +59,68 @@ value class Temperature(val kelvin: Double) {
  *
  * It is equal to 0 degrees Celsius.
  *
- * (A little history: since the founding of IUPAC in 1919, 0 centigrade, or 273.15 Kelvin, has been the "standard
+ * A little history: since the founding of IUPAC in 1919, 0 centigrade, or 273.15 Kelvin, has been the "standard
  * temperature" according to that organization--even though the "standard pressure" changed from 101.3kPa to 100kPa in
  * 1982 . Fortunately, IUPAC has been somewhat of a _de facto_ standard as of late, though it certainly isn't the only
  * organization to have made a standard, with, e.g. NIST at 20 centigrade, ICAO at 15 centigrade, the US EPA at 25
- * centigrade, and so forth. Current best practice is to document which "stnadard" is actually adhered to, so consider
+ * centigrade, and so forth. Current best practice is to document which "standard" is actually adhered to, so consider
  * this comment to declare our adherence to IUPAC 1982 :)
  */
-val STANDARD_TEMPERATURE: Temperature = Temperature(273.15)
+val STANDARD_TEMPERATURE = Quantity(273.15, KELVIN)
 
-class ThermalMass(
-    /** The material of this mass, used for its thermal properties. */
-    val material: Material,
-    /** Thermal energy, in J. Leave null to set [STANDARD_TEMPERATURE]. */
-    energy: Double? = null,
-    /** Mass, in kg. */
-    val mass: Double = 1.0,
-) {
-    var energy: Double = energy ?: (STANDARD_TEMPERATURE.kelvin * mass * material.specificHeat)
-
-    fun temperatureAt(e: Double): Temperature = Temperature(e / mass / material.specificHeat)
+/**
+ * Represents a *homogenous mass* of [material].
+ * @param material The material that best reflects the desired properties of this mass.
+ * @param energy The initial energy. Leave `null` to set it such that [temperature] is [STANDARD_TEMPERATURE].
+ * @param mass The mass of the body.
+ * */
+class ThermalMass(val material: Material, energy: Quantity<Energy>? = null, val mass: Quantity<Mass> = Quantity(1.0, KILOGRAM)) {
+    var energy: Quantity<Energy> = energy ?: Quantity(!STANDARD_TEMPERATURE * !mass * !material.specificHeat)
 
     /**
-     * Temperature of this mass, in K.
+     * Gets the [Temperature] this mass would have if [ThermalMass.energy] were set to [energy].
+     *
+     * This does not mutate anything.
+     * */
+    fun temperatureAt(energy: Quantity<Energy>) = Quantity(!energy / !mass / !material.specificHeat, KELVIN)
+
+    /**
+     * The [Temperature] of this mass.
      *
      * Setting this changes the [energy].
      */
-    var temperature: Temperature
+    var temperature: Quantity<Temperature>
         get() = temperatureAt(energy)
-        set(value) {
-            energy = value.kelvin * mass * material.specificHeat
-        }
+        set(value) { energy = Quantity(!value * !mass * !material.specificHeat, JOULE) }
 
-    override fun toString() = "<Thermal Mass $material ${mass}kg ${energy}J $temperature>"
+    override fun toString() = "<Thermal Mass $material m=${mass.classify()} E=${energy.classify()} T=${temperature.classify()}>"
+}
+
+/**
+ * Factory for [ThermalMass] instances. Includes all information necessary to create a new instance.
+ * */
+data class ThermalMassDefinition(val material: Material, val energy: Quantity<Energy>? = null, val mass: Quantity<Mass> = Quantity(1.0, KILOGRAM)) : Supplier<ThermalMass> {
+    /**
+     * Creates a new instance of [ThermalMass] with the properties specified in this definition.
+     * */
+    override fun get() = ThermalMass(material, energy, mass)
+
+    override fun toString() = "Def ${this()}"
+
+    /**
+     * Calls [get] to create a new instance of [ThermalMass].
+     * I quite like this; I don't particularly appreciate *`.get()`* semantics for a factory.
+     * */
+    operator fun invoke() = get()
 }
 
 data class ConnectionParameters(
-    /** Conductance of the contact point. There is almost always a little loss due to mechanical effects, unless the materials are welded. This is W/K, with no distance effect. */
-    val conductance: Double = 1.0,
-    /** How long the connection is between the two masses--which affects the transfer rate. Measured in m. */
-    val distance: Double = 1.0,
+    /** Conductance of the contact point with no distance effect. There is almost always a little loss due to mechanical effects, unless the materials are welded. */
+    val conductance: Quantity<ThermalConductance> = Quantity(1.0, WATT_PER_KELVIN),
+    /** How long the connection is between the two masses--which affects the transfer rate. */
+    val distance: Quantity<Distance> = Quantity(1.0, METER),
     /** The "scale" of power conducted along this connection. If constant density is assumed, such that mass and volume are related, this is linear in contact area, thus the name. */
-    val area: Double = 1.0,
+    val area: Double = 1.0, // Do we use SurfaceArea or nah?
     /** How far along the line segment from [MassConnection.a] to [MassConnection.b] the contact point is. Affects how much [MassConnection.a]'s conductance dominates over [MassConnection.b]'s. Keep this between 0.0 and 1.0 inclusive. Meaningless in [EnvironmentConnection]s. */
     val contactPoint: Double = 0.5,
     /**
@@ -114,7 +148,7 @@ interface Connection {
      * By convention, the returned energy transfers are in argument order; whereas the first is usually the
      * [ThermalMass], the second may or may not be relevant depending on whether there is a heat sink.
      */
-    fun transfer(dt: Double): Pair<Double, Double>
+    fun transfer(dt: Double): Pair<Quantity<Energy>, Quantity<Energy>>
 
     /**
      * [ThermalMass]es owned by this connection, so the [Simulator] can manage them.
@@ -139,25 +173,32 @@ class MassConnection(
      *
      * For this to be stable, [dt] must be held relatively small, since this is a linear approximation to an exponential curve--otherwise, overshoot may be observed.
      */
-    override fun transfer(dt: Double): Pair<Double, Double> {
+    override fun transfer(dt: Double): Pair<Quantity<Energy>, Quantity<Energy>> {
         // Kelvin
-        val deltaT = b.temperature.kelvin - a.temperature.kelvin
+        val deltaT = !b.temperature - !a.temperature
         // W/K
-        val distCondA = a.material.thermalConductivity * params.contactPoint * params.distance
-        val distCondB = b.material.thermalConductivity * (1.0 - params.contactPoint) * params.distance
-        val overallCond = params.area * (distCondA * distCondB * params.conductance).pow(1.0 / 3.0)
+        val distCondA = !a.material.thermalConductivity * params.contactPoint * !params.distance
+        val distCondB = !b.material.thermalConductivity * (1.0 - params.contactPoint) * !params.distance
+        val overallCond = params.area * (distCondA * distCondB * !params.conductance).pow(1.0 / 3.0)
         // W
         val power = deltaT * overallCond
         // J
         val energy = power * dt
-        val critDamp = sqrt((a.mass + b.mass) / overallCond) * dt
+        val critDamp = sqrt((!a.mass + !b.mass) / overallCond) * dt
         val dTerm = prevFlux * critDamp * dt
         prevFlux = power
         var toA = energy - dTerm
         var toB = -energy + dTerm
-        if(toA > 0.0) { toA *= params.efficiency }
-        if(toB > 0.0) { toB *= params.efficiency }
-        return toA to toB
+
+        if(toA > 0.0) {
+            toA *= params.efficiency
+        }
+
+        if(toB > 0.0) {
+            toB *= params.efficiency
+        }
+
+        return Quantity(toA, JOULE) to Quantity(toB, JOULE)
     }
 
     override val masses: List<ThermalMass>
@@ -168,7 +209,7 @@ class EnvironmentConnection(
     /** The [ThermalMass] to affect. */
     val a: ThermalMass,
     /** The [Temperature] of the environment--assumed to have infinite energy. */
-    var temperature: Temperature,
+    var temperature: Quantity<Temperature>,
     /** The parameters of this contact. Not all fields are meaningful in this application. */
     val params: ConnectionParameters,
 ): Connection {
@@ -176,16 +217,16 @@ class EnvironmentConnection(
 
     override fun toString() = "<EnvConn $a $temperature $params>"
 
-    override fun transfer(dt: Double): Pair<Double, Double> {
+    override fun transfer(dt: Double): Pair<Quantity<Energy>, Quantity<Energy>> {
         // See above for comments explaining more of this
-        val deltaT = temperature.kelvin - a.temperature.kelvin
-        val overallCond = sqrt(params.area * a.material.thermalConductivity * params.conductance)
+        val deltaT = !temperature - !a.temperature
+        val overallCond = sqrt(params.area * !a.material.thermalConductivity * !params.conductance)
         val power = deltaT * overallCond
-        val critDamp = sqrt(a.mass / overallCond) * dt
+        val critDamp = sqrt(!a.mass / overallCond) * dt
         var energy = (power - prevFlux * critDamp) * dt
         prevFlux = power
         if(energy > 0.0) { energy *= params.efficiency }
-        return energy to 0.0
+        return Quantity(energy, JOULE) to Quantity(0.0, JOULE)
     }
 
     override val masses: List<ThermalMass>
@@ -200,7 +241,7 @@ class Simulator {
     /**
      * Add a body to the simulation.
      *
-     * Without connection, this body will still conduct from/to the [environment].
+     * Without connection, this body will still conduct from/to the environment.
      */
     fun add(mass: ThermalMass) {
         masses.add(mass)
@@ -240,7 +281,7 @@ class Simulator {
      */
     fun connect(
         a: ThermalMass,
-        temperature: Temperature,
+        temperature: Quantity<Temperature>,
         params: ConnectionParameters = ConnectionParameters.DEFAULT,
     ): Connection =
         EnvironmentConnection(a, temperature, params).also {
@@ -291,16 +332,20 @@ class Simulator {
         connections.forEach { connection ->
             val (toA, toB) = connection.transfer(dt)
             val masses = connection.masses
+
             masses.getOrNull(0)?.let { a ->
-                deltaE[a] = deltaE.getOrDefault(a, 0.0) + toA
+                deltaE[a] = deltaE.getOrDefault(a, 0.0) + !toA
             }
+
             masses.getOrNull(1)?.let { b ->
-                deltaE[b] = deltaE.getOrDefault(b, 0.0) + toB
+                deltaE[b] = deltaE.getOrDefault(b, 0.0) + !toB
             }
         }
+
         deltaE.entries.forEach { (mass, delta) ->
-            mass.energy += delta
+            mass.energy += Quantity(delta, JOULE)
         }
+
         deltaE.clear()
     }
 }

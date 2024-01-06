@@ -1,12 +1,8 @@
 package org.ageseries.libage.sim.electrical.mna.component
 
-import org.ageseries.libage.data.DisjointSet
+import org.ageseries.libage.data.SuperDisjointSet
 import org.ageseries.libage.debug.dprintln
-import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.GroundNode
-import org.ageseries.libage.sim.electrical.mna.IDetail
-import org.ageseries.libage.sim.electrical.mna.Node
-import org.ageseries.libage.sim.electrical.mna.VSource
+import org.ageseries.libage.sim.electrical.mna.*
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -18,25 +14,24 @@ import kotlin.collections.ArrayList
 class ConnectionMutationException: Exception()
 
 /**
- * A connectable "point" on a component. The [representative] of this [DisjointSet] owns a [Node].
+ * A connectable "point" on a component. The [representative] of this [SuperDisjointSet] owns a [Node].
  */
-class Pin: DisjointSet() {
+class Pin: SuperDisjointSet<Pin>() {
     private var internalNode: Node? = null
+
     var node: Node?
-        get() = (representative as Pin).internalNode
+        get() = representative.internalNode
         set(value) {
-            dprintln("P.n.<set>: $this from=$node to=$value on=${representative as Pin}")
-            (representative as Pin).internalNode = value
+            dprintln("P.n.<set>: $this from=$node to=$value on=${representative}")
+            representative.internalNode = value
             dprintln("P.n.<set>: out $this node=$node")
         }
 
-    override fun unite(other: DisjointSet) {
-        val opin = other as? Pin
-        if(opin != null) {  // This should be the hot path
-            val node = Node.mergeData(internalNode, opin.internalNode)
-            internalNode = node
-            opin.internalNode = node
-        }
+    override fun unite(other: Pin) {
+        // This should be the hot path
+        val node = Node.mergeData(internalNode, other.internalNode)
+        internalNode = node
+        other.internalNode = node
         super.unite(other)
     }
 
@@ -51,19 +46,15 @@ class Pin: DisjointSet() {
  * As [Pin]s are created and destroyed anytime a [Component] is added or removed from a circuit, this class provides a stable abstraction for naming a [Pin] that can be safely sent wherever the [Component] is used.
  *
  * Because of the former, getters on this class should be treated as ephemeral, and *will* race with data modifications to the underlying [Circuit] without causing errors. If you have to cache these variables, keep their lifetimes short and bounded.
+ * @param component The [Component] whose pin is being described.
+ * @param pinIndex The index of the [Pin] on the [component].
  */
-class PinRef(
-    /** The [Component] whose pin is being described. */
-    val component: Component,
-    pinIndex: Int)
-{
+class PinRef(val component: Component, val pinIndex: Int) {
     init {
-       if(pinIndex < 0 || pinIndex >= component.pinCount)
-           error("Invalid pin index $pinIndex")
+        require(pinIndex >= 0 && pinIndex < component.pinCount) {
+            "Pin $pinIndex is out-of-bounds"
+        }
     }
-
-    /** The index of the [Pin] on the [component]. */
-    val pinIndex = pinIndex
 
     /** Whether the [component] is in a [Circuit]. */
     val isInCircuit get() = component.isInCircuit
@@ -129,6 +120,12 @@ class PinRef(
 }
 
 /**
+ * Represents a common ancestor for [Component] and [VirtualComponent].
+ * Useful downstream, where we have methods and DTOs where we use [Term] instead of separate handling for [Component] and [VirtualComponent].
+ * */
+interface Term
+
+/**
  * The Component is an entity which can be simulated in a [Circuit]; generally speaking, these are little more than object-oriented interfaces to the state of the Circuit as expressed through its [Circuit.matrix], [Circuit.knowns], [Circuit.solver], and so forth. Much of the actual math implemented for a component depends on the "stamp" family of methods--see those for details.
  *
  * Components are implemented quite generally, borrowing from the flexibility of [Falstad's circuit simulator](https://www.falstad.com/circuit-java/); in theory, this implementation should be capable of everything that implementation is, including arbitrary nonlinear components (diodes, transistors, etc.), components with multiple nodes (two-port networks, e.g.), and more. The names and contexts are slightly changed, however (and this version has much less graphical cross-cutting code).
@@ -142,7 +139,7 @@ class PinRef(
  *
  * In keeping with good practice, please try to keep this list of _requirements_ as small as possible. There are many more fields which have default implementations (including a great many methods which do nothing) but which are needed for specific functionality; if a default implementation makes sense, define one at this level.
  */
-abstract class Component : IDetail {
+abstract class Component : IDetail, Term {
     /**
      *  Ask this component to contribute (initial) values to the MNA matrices.
      *
@@ -285,6 +282,20 @@ abstract class Component : IDetail {
         markConnectivityChanged()
     }
 
+    /**
+     * Unlinks this component, giving it a fresh set of [Pin]s.
+     *
+     * Other [Component]s connected to the same erstwhile pins will remain connected.
+     *
+     * At present, this is functionally equivalent to removing and replacing the component into its owning [Circuit].
+     */
+    fun unlink() {
+        if(circuit == null) return
+        val cir = circuit!!  // safe with one thread
+        cir.remove(this) // mutates this.circuit
+        cir.add(this)
+    }
+
     private fun markConnectivityChanged() {
         if(circuit == null) throw ConnectionMutationException()
         circuit!!.connectivityChanged = true
@@ -305,6 +316,21 @@ abstract class Component : IDetail {
  * By virtue of upholding the Port Condition, the two involved Nodes are often given special names, a "positive" and "negative" terminal ([pos] and [neg]), across which the potential can be sensibly measured. By convention, the potential is positive when [pos]' potential is greater than [neg]. (If you know the resistance, like [Resistor]s do, the power dissipated can then be summarily computed.)
  */
 abstract class Port : Component() {
+    companion object {
+        /**
+         * The pin number of the "negative" potential side of the port in forward bias.
+         *
+         * This is arbitrary, but chosen to agree with Falstad.
+         */
+        const val NEG_INDEX: Int = 0
+
+        /**
+         * The pin number of the "negative" potential side of the port in forward bias.
+         *
+         * This is arbitrary, but chosen to agree with Falstad.
+         */
+        const val POS_INDEX: Int = 1
+    }
     /**
      * A Port is, by definition, two nodes; thus, this cannot be overridden.
      */
@@ -317,7 +343,7 @@ abstract class Port : Component() {
      * By arbitrary convention, for compatibility with the Falstad circuit format, this is the second node.
      */
     open val pos: Node?
-        get() = node(1)
+        get() = node(POS_INDEX)
 
     /**
      * Get the negative [Node].
@@ -325,17 +351,17 @@ abstract class Port : Component() {
      * This is arbitrarily the first Node, for Falstad compatibility.
      */
     open val neg: Node?
-        get() = node(0)
+        get() = node(NEG_INDEX)
 
     /**
      * Get the positive [PinRef].
      */
-    open val posRef get() = pinRef(1)
+    open val posRef get() = pinRef(POS_INDEX)
 
     /**
      * Get the negative [PinRef].
      */
-    open val negRef get() = pinRef(0)
+    open val negRef get() = pinRef(NEG_INDEX)
 
     /**
      * Get the potential across [pos] and [neg], signed positive when [pos] has a greater potential than [neg].

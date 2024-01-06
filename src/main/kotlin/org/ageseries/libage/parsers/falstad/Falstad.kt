@@ -20,8 +20,8 @@ import org.ageseries.libage.sim.electrical.mna.Node
 import org.ageseries.libage.sim.electrical.mna.component.Component
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
-import org.ageseries.libage.data.DisjointSet
-import org.ageseries.libage.space.Vec2i
+import org.ageseries.libage.data.SuperDisjointSet
+import org.ageseries.libage.mathematics.geometry.Vector2di
 
 /**
  * A splitting pattern for runs of one or more spaces (ASCII 32).
@@ -45,9 +45,9 @@ data class PinRef(val component: Component, val pinidx: Int) {
 }
 
 /**
- * A simple wrapper class for a position (as a [Vec2i]) referring to a position within the Falstad canvas.
+ * A simple wrapper class for a position (as a [Vector2di]) referring to a position within the Falstad canvas.
  */
-data class PinPos(val pos: Vec2i)
+data class PinPos(val pos: Vector2di)
 
 /**
  * Represents a line of text from a Falstad save.
@@ -120,7 +120,7 @@ data class CCData(val falstad: Falstad, val line: FalstadLine) {
      *
      * The exact elements consumed are indices 1 through 4 inclusive.
      */
-    val pinPositions get() = (0 until 2).map { i -> PinPos(Vec2i(line.getInt(1 + 2 * i), line.getInt(2 + 2 * i))) }
+    val pinPositions get() = (0 until 2).map { i -> PinPos(Vector2di(line.getInt(1 + 2 * i), line.getInt(2 + 2 * i))) }
 
     /**
      * Get the first point of the bounding box in pinPositions.
@@ -161,11 +161,11 @@ data class CCData(val falstad: Falstad, val line: FalstadLine) {
 }
 
 /**
- * A [DisjointSet] subclass which holds a [PinPos].
+ * A [SuperDisjointSet] subclass which holds a [PinPos].
  *
  * The Set class is used to implement the Disjoint Sets algorithm; the representative of the merged sets is used to determine which PinPos' are connected by wires, and thus merged into [Node]s as present in the [Circuit].
  */
-data class PosSet(val pos: PinPos) : DisjointSet()
+data class PosSet(val pos: PinPos) : SuperDisjointSet<PosSet>()
 
 /**
  * An interface for constructing [Component]s (usually)
@@ -238,7 +238,7 @@ abstract class PoleConstructor : IComponentConstructor {
         ccd.circuit.add(c)
         configure(ccd, c)
         ccd.pinPositions.withIndex().forEach { posidx ->
-            val pp = (ccd.falstad.getPin(posidx.value).representative as PosSet)
+            val pp = ccd.falstad.getPin(posidx.value).representative
             ccd.falstad.addPinRef(pp, PinRef(c, posidx.index))
         }
     }
@@ -255,7 +255,7 @@ abstract class PoleConstructor : IComponentConstructor {
  */
 class Falstad(val source: String) {
     /**
-     * "List of roots" (of the [Disjoint Set][DisjointSet] forest); a mapping from [PinPos] to [PosSet].
+     * "List of roots" (of the [Disjoint Set][SuperDisjointSet] forest); a mapping from [PinPos] to [PosSet].
      *
      * The values of this map are members of the forest (not necessarily "roots", but the root can easily be found as the representative).
      */
@@ -346,7 +346,7 @@ class Falstad(val source: String) {
             val repmap: MutableMultiMap<PosSet, PosSet> = mutableMultiMapOf()
             roots.values.forEach { set ->
                 dprintln("F.<init>: r $set => ${set.representative}")
-                repmap[set.representative as PosSet] = set
+                repmap[set.representative] = set
             }
 
             repmap.keyMapping.forEach { rep ->
@@ -359,7 +359,7 @@ class Falstad(val source: String) {
 
         val mergedRefs: MutableMultiMap<PosSet, PinRef> = mutableMultiMapOf()
         roots.values.forEach { posset ->
-            mergedRefs[posset.representative as PosSet].addAll(refs[posset])
+            mergedRefs[posset.representative].addAll(refs[posset])
         }
 
         if (DEBUG) mergedRefs.entries.forEach { pair ->
@@ -378,7 +378,7 @@ class Falstad(val source: String) {
         }
 
         grounds.forEach { posset ->
-            val pinset = refs[posset.representative as PosSet]
+            val pinset = refs[posset.representative]
             if (pinset.isNotEmpty()) {
                 // Only need to connect 1; the disjoint PosSets are merged right now
                 val pr = pinset.iterator().next()

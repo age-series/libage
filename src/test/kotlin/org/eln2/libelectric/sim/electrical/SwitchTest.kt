@@ -1,7 +1,7 @@
 package org.eln2.libelectric.sim.electrical
 
 import org.ageseries.libage.debug.mnaPrintln
-import org.ageseries.libage.sim.electrical.component.Switch
+import org.ageseries.libage.sim.electrical.mna.component.Switch
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.junit.jupiter.api.Assertions
@@ -56,17 +56,17 @@ class SwitchTest {
         sw.openResistance = 100_000_000.0
 
         sw.closed = true
-        Assertions.assertEquals(true, sw.closedResistance == sw.resistance)
+        Assertions.assertEquals(true, sw.closedResistance == sw.resistance) { "Resistance: ${sw.resistance} != ${sw.closedResistance}" }
 
         assert(c.step(0.05))
         mnaPrintln(c)
-        Assertions.assertEquals(true, (sw.current > 0.99) and (sw.current < 1.01))
+        Assertions.assertEquals(true, (sw.current > 0.99) and (sw.current < 1.01)) { "Current: ${sw.current}" }
 
         sw.toggle()
-        Assertions.assertEquals(true, sw.openResistance == sw.resistance)
+        Assertions.assertEquals(true, sw.openResistance == sw.resistance) { "Resistance: ${sw.resistance} != ${sw.openResistance}" }
 
         assert(c.step(0.05))
         mnaPrintln(c)
-        Assertions.assertEquals(true, (sw.current > 0.000000099) and (sw.current < 0.000000101))
+        Assertions.assertEquals(true, (sw.current > 0.000000099) and (sw.current < 0.000000101)) { "Current: ${sw.current}" }
     }
 }

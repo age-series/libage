@@ -2,14 +2,14 @@ package org.ageseries.libage.sim.electrical.mna
 
 import org.ageseries.libage.debug.dprintln
 import org.ageseries.libage.sim.electrical.mna.component.Component
-import org.ageseries.libage.data.DisjointSet
+import org.ageseries.libage.data.SuperDisjointSet
 
 /**
  * A "node", in MNA; the non-resistive connections between [Component]s. All [Pin]s which are connected share a single instance of Node.
  *
  * Aside from identifying [Component]s' connections, the Nodes' potentials (relative to [Circuit.ground]) are computed as a result of the MNA algorithm.
  */
-open class Node(var circuit: Circuit) : IDetail, DisjointSet() {
+open class Node(var circuit: Circuit) : IDetail, SuperDisjointSet<Node>() {
     companion object {
         /**
          * Determine which of two (nullable) Nodes should subsume the other when the two are about to be merged.

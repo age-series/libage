@@ -31,6 +31,7 @@ dependencies {
     testImplementation("org.assertj", "assertj-core", "3.22.0")
     testImplementation("org.junit.jupiter", "junit-jupiter-api", "5.8.2")
     testRuntimeOnly("org.junit.jupiter", "junit-jupiter-engine", "5.8.2")
+    implementation(kotlin("reflect"))
 }
 
 tasks {
@@ -94,18 +95,25 @@ tasks {
 // By default, build everything, put it somewhere convenient, and run the tests.
 defaultTasks = mutableListOf("build", "test")
 
+val compileArgs = listOf(
+    "-Xopt-in=kotlin.RequiresOptIn"
+)
+
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
-    jvmTarget = "17"
+    jvmTarget = "1.8"
+    freeCompilerArgs += compileArgs
 }
+
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "17"
+    jvmTarget = "1.8"
+    freeCompilerArgs += compileArgs
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
+        languageVersion.set(JavaLanguageVersion.of(8))
     }
 }
 

@@ -257,7 +257,7 @@ class RealisticDiode(private var model: DiodeData) : Resistor() {
 
     override fun simStep() {
         dprintln("u=$potential lastU=$lastPotential")
-        if (abs(potential - lastPotential) < circuit!!.slack) return
+        if (circuit!!.nearlyZero(potential - lastPotential)) return
 
         val newPotential = model.solveIter(temp, potential, lastPotential)
         lastPotential = potential
