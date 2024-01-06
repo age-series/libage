@@ -1,4 +1,4 @@
-@file:Suppress("MemberVisibilityCanBePrivate")
+@file:Suppress("MemberVisibilityCanBePrivate", "NOTHING_TO_INLINE", "LocalVariableName")
 
 package org.ageseries.libage.mathematics.geometry
 
@@ -205,9 +205,9 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 
     val normSqr get() = this dot this
     val norm get() = sqrt(normSqr)
-    fun normalized() = this / norm
+    fun normalized() = this * normalizationCoefficient(this.x, this.y, this.z, this.w)
     val xyz get() = Vector3d(x, y, z)
-    val inverse get() = Rotation3d(-x, -y, -z, w) / normSqr
+    val inverse get() = Rotation3d(-x, -y, -z, w)
 
     infix fun dot(other: Rotation3d) = this.x * other.x + this.y * other.y + this.z * other.z + this.w * other.w
 
@@ -238,9 +238,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
 
     operator fun unaryPlus() = this
     operator fun unaryMinus() = Rotation3d(-x, -y, -z, -w)
-
     operator fun not() = this.inverse
-
     operator fun plus(w: Vector3d) = this * exp(w)
     operator fun minus(b: Rotation3d) = (this / b).ln()
     operator fun plus(angle: Double) : Rotation3d {
@@ -254,12 +252,13 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
         return exp((w / n) * (n + angle))
     }
 
-    operator fun times(other: Rotation3d) = Rotation3d(
-        x * other.w + other.x * w + (y * other.z - z * other.y), // Could also use FMADD
+    operator fun times(other: Rotation3d) = createNormalized(
+        x * other.w + other.x * w + (y * other.z - z * other.y),
         y * other.w + other.y * w + (z * other.x - x * other.z),
         z * other.w + other.z * w + (x * other.y - y * other.x),
         w * other.w - (x * other.x + y * other.y + z * other.z)
     )
+
     operator fun times(v: Vector3d): Vector3d {
         val `2wx` = 2.0 * (w * x)
         val `2wy` = 2.0 * (w * y)
@@ -277,6 +276,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
             (v.x * (`2xz` - `2wy`) + v.y * (`2yz` + `2wx`) + v.z * (1.0 - `2xx` - `2yy`))
         )
     }
+
     operator fun times(transform: Pose3d) = Pose3d(this * transform.translation, this * transform.rotation)
 
     operator fun div(b: Rotation3d) = b.inverse * this
@@ -302,10 +302,28 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
     operator fun invoke(k: Double) = exp(ln() * k)
 
     fun approxEqComponentWise(other: Rotation3d, eps: Double = GEOMETRY_COMPARE_EPS) = x.approxEq(other.x, eps) && y.approxEq(other.y, eps) && z.approxEq(other.z, eps) && w.approxEq(other.w, eps)
+
     fun approxEq(other: Rotation3d, eps: Double = GEOMETRY_COMPARE_EPS) = abs(this dot other).approxEq(1.0, eps)
 
     companion object {
         val identity = Rotation3d(0.0, 0.0, 0.0, 1.0)
+
+        // this is interesting, maybe we could move it to our main math package
+        inline fun normalizationCoefficient(x: Double, y: Double, z: Double, w: Double) : Double {
+            val normSqr = (x * x) + (y * y) + (z * z) + (w * w)
+
+            return if(abs(1.0 - normSqr) < 2.107342e-08) {
+                2.0 / (1.0 + normSqr)
+            }
+            else {
+                1.0 / sqrt(normSqr)
+            }
+        }
+
+        inline fun createNormalized(x: Double, y: Double, z: Double, w: Double) : Rotation3d {
+            val k = normalizationCoefficient(x, y, z, w)
+            return Rotation3d(k * x, k * y, k * z, k * w)
+        }
 
         fun exp(w: Vector3d): Rotation3d {
             val t = w.norm
@@ -408,10 +426,10 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
                 return Rotation3d(x, y, z, 0.0)
             }
 
-            val (x, y, z) = (from x to)
+            val (x, y, z) = from x to
             val w = 1.0 + c
-            val n = 1.0 / sqrt((x * x) + (y * y) + (z * z) + (w * w))
-            return Rotation3d(x * n, y * n, z * n, w * n)
+
+            return createNormalized(x, y, z, w)
         }
     }
 }
@@ -465,7 +483,7 @@ data class Rotation3dDual(val x: Dual, val y: Dual, val z: Dual, val w: Dual) {
     val normSqr get() = x * x + y * y + z * z + w * w
     val norm get() = sqrt(normSqr)
     fun normalized() = this / norm
-    val inverse get() = Rotation3dDual(-x, -y, -z, w) / normSqr
+    val inverse get() = Rotation3dDual(-x, -y, -z, w)
     val value get() = Rotation3d(x.value, y.value, z.value, w.value)
 
     fun ln(): Vector3dDual {

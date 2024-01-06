@@ -1,4 +1,4 @@
-@file:Suppress("MemberVisibilityCanBePrivate", "LocalVariableName")
+@file:Suppress("MemberVisibilityCanBePrivate", "LocalVariableName", "NonAsciiCharacters")
 
 package org.ageseries.libage.mathematics.geometry
 
@@ -993,6 +993,48 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
     }
 
     /**
+     * Evaluates the intersection with the [cylinder].
+     * @return A [RayIntersection], if an intersection exists. Otherwise, null.
+     * The [RayIntersection.exit] is not guaranteed to be on the bounded [cylinder], but it will be on the infinite cylinder passing through [cylinder].
+     * */
+    infix fun intersectionWith(cylinder: Cylinder3d): RayIntersection? {
+        val transform = cylinder.transform.inverse
+        val (posX, posY, posZ) = transform * origin
+        val (dirX, dirY, dirZ) = transform.rotation * direction
+
+        val radius = cylinder.radius
+
+        val a = dirX * dirX + dirZ * dirZ
+        val b = 2.0 * (dirX * posX + dirZ * posZ)
+        val c = posX * posX + posZ * posZ - radius * radius
+
+        val Δ = b * b - 4.0 * a * c
+
+        if(Δ < GEOMETRY_NORMALIZED_EPS) {
+            return null
+        }
+
+        val d = sqrt(Δ)
+        var t1 = (-b - d) / (2.0 * a)
+        var t2 = (-b + d) / (2.0 * a)
+
+        if(t1 > t2) {
+            val temp = t1
+            t1 = t2
+            t2 = temp
+        }
+
+        val hitY = posY + dirY * t1
+        val h = 0.5 * cylinder.height
+
+        if(hitY !in -h..h) {
+            return null
+        }
+
+        return RayIntersection(t1, t2)
+    }
+
+    /**
      * Checks if the ray intersects with the [plane].
      * */
     infix fun intersectsWith(plane: Plane3d) : Boolean {
@@ -1010,6 +1052,11 @@ data class Ray3d(val origin: Vector3d, val direction: Vector3d) {
      * Checks if the ray intersects with the [box].
      * */
     infix fun intersectsWith(box: OrientedBoundingBox3d) = intersectionWith(box) != null
+
+    /**
+     * Checks if the ray intersects with the [cylinder].
+     * */
+    infix fun intersectsWith(cylinder: Cylinder3d) = intersectionWith(cylinder) != null
 
     companion object {
         /**
@@ -1048,14 +1095,14 @@ data class Line3d(val origin: Vector3d, val direction: Vector3d, val length: Dou
     /**
      * Gets a ray starting at [origin] towards [end].
      * */
-    val asRay get() = Ray3d(origin, direction)
+    val ray get() = Ray3d(origin, direction)
 
     /**
      * Evaluates the intersection with the [box].
      * @return A [RayIntersection], if an intersection exists. Otherwise, null. *Non-null results do not guarantee that the exit point is within this line segment.*
      * */
     infix fun intersectionWith(box: BoundingBox3d): RayIntersection? {
-        val intersection = (this.asRay intersectionWith box)
+        val intersection = (this.ray intersectionWith box)
             ?: return null
 
         if(intersection.entry !in 0.0..length) {
@@ -1070,7 +1117,22 @@ data class Line3d(val origin: Vector3d, val direction: Vector3d, val length: Dou
      * @return A [RayIntersection], if an intersection exists. Otherwise, null. *Non-null results do not guarantee that the exit point is within this line segment.*
      * */
     infix fun intersectionWith(box: OrientedBoundingBox3d): RayIntersection? {
-        val intersection = (this.asRay intersectionWith box)
+        val intersection = (this.ray intersectionWith box)
+            ?: return null
+
+        if(intersection.entry !in 0.0..length) {
+            return null
+        }
+
+        return intersection
+    }
+
+    /**
+     * Evaluates the intersection with the [cylinder].
+     * @return A [RayIntersection], if an intersection exists. Otherwise, null. *Non-null results do not guarantee that the exit point is within this line segment.*
+     * */
+    infix fun intersectionWith(cylinder: Cylinder3d): RayIntersection? {
+        val intersection = (this.ray intersectionWith cylinder)
             ?: return null
 
         if(intersection.entry !in 0.0..length) {
@@ -1089,6 +1151,11 @@ data class Line3d(val origin: Vector3d, val direction: Vector3d, val length: Dou
      * Checks if the ray intersects with the [box].
      * */
     infix fun intersectsWith(box: OrientedBoundingBox3d) = intersectionWith(box) != null
+
+    /**
+     * Checks if the ray intersects with the [cylinder].
+     * */
+    infix fun intersectsWith(cylinder: Cylinder3d) = intersectionWith(cylinder) != null
 
     companion object {
         /**
@@ -1112,6 +1179,16 @@ data class Cylinder3d(val extent: Line3d, val radius: Double) {
      * Gets the center point of the cylinder.
      * */
     val center get() = extent.center
+
+    /**
+     * Gets the height of the cylinder (distance between the centers of the two caps).
+     * */
+    val height get() = extent.length
+
+    /**
+     * Gets a transform that would transform a cylinder with center at 0, 0, 0 and [radius] into this one.
+     * */
+    val transform get() = Pose3d(center, Rotation3d.createFromTwoVectors(Vector3d.unitY, extent.direction))
 
     /**
      * Checks if the cylinder intersects with the [box].

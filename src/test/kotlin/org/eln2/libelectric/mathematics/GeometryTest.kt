@@ -158,6 +158,9 @@ internal class GeometryTest {
                 }
             }
         }
+
+        assertEquals(Rotation3d.createNormalized(0.1, 0.1, 0.1, 0.1).norm, 1.0)
+        assertEquals(Rotation3d.createNormalized(0.5, 0.0, 0.0, 0.0).norm, 1.0)
     }
 
     @Test
