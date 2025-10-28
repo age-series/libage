@@ -10,6 +10,7 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.VOLT
 import org.ageseries.libage.data.WATT
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.sim.Pole
 import kotlin.math.min
 import kotlin.math.sign
 import kotlin.math.sqrt
@@ -940,8 +941,9 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
     override fun getNortonResistance(value: Double) = value
 
     /**
-     * The "potential rating" of the device. For sources, this will also be the potential constraint.
+     * The "potential rating" of the device. This will also be the potential constraint.
      * It's part of the conductance stabilizing the Norton system. It must be positive and non-zero normally.
+     * **Changing this causes a matrix re-factor unless [freezeResistance] is set.**
      * */
     var maxPotential: Double = 1.0
         set(value) {
@@ -950,12 +952,16 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
             }
 
             field = value
-            recomputeResistance()
+
+            if(!freezeResistance) {
+                computePVCharacteristicResistance()
+            }
         }
 
     /**
-     * The "power rating" of the device. This constrains the [targetPower] in a range of [-[maxPower], [maxPower]].
-     * It must be positive and non-zero normally.
+     * The "power rating" of the device. This constrains the [targetPower] in a range of [0, [maxPower]].
+     * It's part of the conductance stabilizing the Norton system. It must be positive and non-zero normally.
+     * **Changing this causes a matrix re-factor unless [freezeResistance] is set.**
      * */
     var maxPower: Double = 1.0
         set(value) {
@@ -964,7 +970,10 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
             }
 
             field = value
-            recomputeResistance()
+
+            if(!freezeResistance) {
+                computePVCharacteristicResistance()
+            }
         }
 
     /**
@@ -975,13 +984,21 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
     /**
      * The power to generate.
      * */
-    var targetPower: Double = 0.0
+    var targetPower = 0.0
+
+    /**
+     * If set to true, then the characteristic resistance will not be re-computed when [maxPotential] or [maxPower] is changed.
+     *
+     * If the operating regime of this source is variable (dynamic), consider initializing [maxPotential] and [maxPower] to some reasonable operating point estimates or manually setting [characteristicResistance], then freezing.
+     * */
+    var freezeResistance = false
 
     /**
      * Computes *some* resistance for the Norton system.
+     * This resistance is a characteristic resistance, that sort of plays well.
      * */
-    private fun recomputeResistance() {
-        nortonEquivalentResistance = if(maxPower.approxEq(0.0) || maxPotential.approxEq(0.0)) {
+    fun computePVCharacteristicResistance() {
+        characteristicResistance = if(maxPower.approxEq(0.0) || maxPotential.approxEq(0.0)) {
             ElectricalSimulation.MAX_RESISTANCE
         } else {
             (maxPotential * maxPotential / maxPower).coerceIn(ElectricalSimulation.MIN_RESISTANCE, ElectricalSimulation.MAX_RESISTANCE)
@@ -989,13 +1006,16 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
     }
 
     init {
-        recomputeResistance()
+        computePVCharacteristicResistance()
     }
 
     override val characteristicName: String
         get() = "power source equivalent"
 
-    var nortonEquivalentResistance: Double
+    /**
+     * The stabilizing resistance of the Norton system.
+     * */
+    var characteristicResistance: Double
         get() = componentValue
         set(value) { componentValue = value }
 

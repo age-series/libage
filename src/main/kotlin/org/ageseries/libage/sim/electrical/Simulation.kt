@@ -3,6 +3,7 @@ package org.ageseries.libage.sim.electrical
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.electrical.ElectricalComponent.Companion.ID_GENERATOR
 import org.ageseries.libage.sim.electrical.ElectricalNode.Companion.GROUND_ID
 import org.ageseries.libage.sim.electrical.ElectricalNode.Companion.VIRTUAL_ID
@@ -216,15 +217,6 @@ abstract class Port : ElectricalComponent() {
         Pole.Negative -> negative
     }
 
-    enum class Pole(val symbol: String) {
-        Positive("+"),
-        Negative("-");
-
-        val opposite get() = when(this) {
-            Positive -> Negative
-            Negative -> Positive
-        }
-    }
 }
 
 /**
@@ -779,7 +771,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                     val dVidINk = s1 - s2
 
                     val INi = deviceI.nortonCurrent
-                    val RNi = deviceI.nortonEquivalentResistance // Constant
+                    val RNi = deviceI.characteristicResistance // Constant
 
                     // Term 1: Calculate d(P_actual,i) / d(INk)
                     var dPadINk = (INi - 2.0 * potentialI / RNi) * dVidINk
