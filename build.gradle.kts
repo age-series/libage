@@ -26,6 +26,7 @@ plugins {
 dependencies {
     implementation("org.jetbrains.kotlin", "kotlin-stdlib", "1.6.10")
     implementation("org.apache.commons", "commons-math3", "3.6.1")
+    implementation("org.ejml:ejml-all:0.44.0")
     implementation("org.jetbrains:annotations:23.0.0")
 
     testImplementation("org.assertj", "assertj-core", "3.22.0")
@@ -101,19 +102,19 @@ val compileArgs = listOf(
 
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
-    jvmTarget = "1.8"
+    jvmTarget = "11"
     freeCompilerArgs += compileArgs
 }
 
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "1.8"
+    jvmTarget = "11"
     freeCompilerArgs += compileArgs
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(8))
+        languageVersion.set(JavaLanguageVersion.of(11))
     }
 }
 

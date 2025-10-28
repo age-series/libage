@@ -6,6 +6,7 @@ import org.ageseries.libage.data.ClosedInterval
 import org.ageseries.libage.data.SegmentTree
 import org.ageseries.libage.data.SegmentTreeBuilder
 import org.ageseries.libage.mathematics.geometry.*
+import org.ageseries.libage.utils.Stopwatch
 import kotlin.math.*
 
 inline fun lerp(from: Double, to: Double, factor: Double) = (1.0 - factor) * from + factor * to
@@ -561,7 +562,10 @@ data class Spline1d(val map: SplineSegmentMap<SplineSegment1d>) : InterpolationF
         it.evaluateDual(Dual.variable(it.segmentAbscissa(t), n))
     }
 
-    fun arclengthScan(a: Double, b: Double, eps: Double) = integralScan(a, b, eps) { this.evaluateDual(it, 2)[1] }
+    fun arclengthScan(a: Double, b: Double, eps: Double) = integralScan(a, b, eps) {
+        val d = this.evaluateDual(it, 2)[1]
+        sqrt(d * d + 1)
+    }
 }
 
 fun <P, V, VD> InterpolationFunctionDual<P, V, VD>.reparamV(f: (P) -> P) = this.let { original ->
@@ -861,4 +865,125 @@ fun MappedGridInterpolator.evaluate(vararg coordinates: Double): Double {
  * */
 fun ArrayKDGridD.interpolator(): GridInterpolator {
     return GridInterpolator(this)
+}
+
+class FramerateIndependentSmoother1d(val tau: Double) {
+    var value = 0.0
+
+    private var initialized = false
+    private val watch = Stopwatch()
+
+    fun reset() {
+        initialized = false
+        value = 0.0
+    }
+
+    fun update(target: Double) : Double {
+        val dt = !watch.sample()
+
+        if(!initialized) {
+            value = target
+            initialized = true
+            return dt
+        }
+
+        val alpha = 1.0 - exp(-dt / tau)
+        value += (target - value) * alpha
+
+        return dt
+    }
+
+    fun pullDown(eps: Double = 1e-6) {
+        if(abs(value) < eps) {
+            value = 0.0
+        }
+    }
+}
+
+class FramerateIndependentSmoother2d(val tau: Double) {
+    var x = 0.0
+    var y = 0.0
+
+    private var initialized = false
+    private val watch = Stopwatch()
+
+    fun update(targetX: Double, targetY: Double) : Double {
+        val dt = !watch.sample()
+
+        if(!initialized) {
+            x = targetX
+            y = targetY
+            initialized = true
+            return dt
+        }
+
+        val alpha = 1.0 - exp(-dt / tau)
+        x += (targetX - x) * alpha
+        y += (targetY - y) * alpha
+
+        return dt
+    }
+}
+
+class RotationUpdateProfile2d(val p0: Rotation2d, val v0: Double, val a1: Double, val a2: Double, val duration: Double) {
+    var currentTime = 0.0
+    val timeRemaining get() = (duration - currentTime).coerceIn(0.0, duration)
+
+    var sampleP = p0
+        private set
+
+    var sampleV = v0
+        private set
+
+    fun sampleTrajectory() : Double {
+        val x = currentTime.coerceIn(0.0, duration)
+        val t = duration / 2.0
+
+        return if (x <= t) {
+            sampleP = p0 + (v0 * x + 0.5 * a1 * x * x)
+            sampleV = v0 + a1 * x
+            a1
+        }
+        else {
+            val p1 = p0 + (v0 * t + 0.5 * a1 * t * t)
+            val v1 = v0 + a1 * t
+            val y = x - t
+
+            sampleP = p1 + (v1 * y + 0.5 * a2 * y * y)
+            sampleV = v1 + a2 * y
+            a2
+        }
+    }
+}
+
+@Suppress("LocalVariableName")
+fun computeRotationUpdateAccelerationProfile(targetPos: Rotation2d, targetVel: Double, sourcePos: Rotation2d, sourceVel: Double, T: Double) : RotationUpdateProfile2d {
+    val dp = targetPos - sourcePos
+    val dv = targetVel - sourceVel
+
+    val t = T / 2.0
+    val t2 = t * t
+
+    val a1 = (dp + targetVel * T) / t2 - (2.0 * sourceVel) / t - dv / T
+    val a2 = dv / t - a1
+
+    return RotationUpdateProfile2d(sourcePos, sourceVel, a1, a2, T)
+}
+
+fun computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+    accelerationEstimate: Double,
+    targetPos: Rotation2d, targetVel: Double,
+    sourcePos: Rotation2d, sourceVel: Double,
+    maxTransitionTime: Double = 0.25
+) : RotationUpdateProfile2d {
+
+    val dv = abs(targetVel - sourceVel)
+    val accelEstimate = abs(accelerationEstimate).coerceAtLeast(abs(dv) / maxTransitionTime)
+    val duration = if(!accelEstimate.approxEq(0.0)) dv / accelEstimate else maxTransitionTime
+
+    return computeRotationUpdateAccelerationProfile(
+        targetPos, targetVel,
+        sourcePos, sourceVel,
+        duration
+    )
 }

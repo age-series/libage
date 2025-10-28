@@ -152,19 +152,17 @@ class SourceQuantityScale<Unit>(dimensionType: Class<*>, scale: Scale) : Quantit
 
 /**
  * Amplifies this scale and results in a new [SourceQuantityScale] (as opposed to [times] which results in [QuantityScale]).
- * Separating from [this.times] is necessary to prevent the children scales creating children scales infinitely.
  * */
-internal infix fun <U> SourceQuantityScale<U>.sourceAmplify(amplify: Double) = SourceQuantityScale<U>(dimensionType, Scale(scale.factor / amplify, scale.base))
+infix fun <U> SourceQuantityScale<U>.sourceAmplify(amplify: Double) = SourceQuantityScale<U>(dimensionType, Scale(scale.factor / amplify, scale.base))
 
 /**
  * Reduces this scale and results in a new [SourceQuantityScale] (as opposed to [div] which results in [QuantityScale]).
- * Separating from [this.div] is necessary to prevent the children scales creating children scales infinitely.
  * */
-internal infix fun <U> SourceQuantityScale<U>.sourceReduce(reduce: Double) = SourceQuantityScale<U>(dimensionType, Scale(scale.factor * reduce, scale.base))
+infix fun <U> SourceQuantityScale<U>.sourceReduce(reduce: Double) = SourceQuantityScale<U>(dimensionType, Scale(scale.factor * reduce, scale.base))
 
-internal fun <U> SourceQuantityScale<U>.sourceAmp() = this sourceAmplify 1000.0
+fun <U> SourceQuantityScale<U>.sourceAmp() = this sourceAmplify 1000.0
 
-internal fun <U> SourceQuantityScale<U>.sourceSub() = this sourceReduce 1000.0
+fun <U> SourceQuantityScale<U>.sourceSub() = this sourceReduce 1000.0
 
 /**
  * Denotes a tangible quantity distinguished by a designated [Unit] and a numeric [value].
@@ -647,6 +645,48 @@ val JOULE_PER_KILOGRAM = standardScale<MassEnergyDensity>()
 
 @DimensionClassifier("J/m³") interface VolumeEnergyDensity
 val JOULE_PER_METER3 = standardScale<VolumeEnergyDensity>()
+
+/**
+ * Calculates the resistance of a conductor with this electrical resistivity, in the shape of a cylinder of length [L] and cross-sectional area [A].
+ * @return The resistance of the conductor.
+ * */
+@Suppress("LocalVariableName")
+fun Quantity<ElectricalResistivity>.cylinderResistance(L: Quantity<Distance>, A: Quantity<Area>) = Quantity((!this * !L) / !A, OHM)
+
+@DimensionClassifier("kg×m²") interface Inertia
+val KILOGRAM_METER2 = standardScale<Inertia>()
+
+@DimensionClassifier("Nms") interface ViscousFriction
+val NEWTON_METER_SECOND = standardScale<ViscousFriction>()
+
+@DimensionClassifier("rad") interface Angle
+val RADIAN = standardScale<Angle>()
+
+@DimensionClassifier("rad/s") interface AngularVelocity
+val RADIAN_PER_SECOND = standardScale<AngularVelocity>()
+
+@DimensionClassifier("rad/s²")interface AngularAcceleration
+val RADIAN_PER_SECOND2 = standardScale<AngularAcceleration>()
+
+@DimensionClassifier("Nm") interface Torque
+val NEWTON_METER = standardScale<Torque>()
+
+@ScaleClassifier("rps")
+val REVOLUTION_PER_SECOND = RADIAN_PER_SECOND sourceAmplify 1.0 / 0.1591549430919
+
+@DimensionClassifier("K/s") interface TemperatureRate
+val KELVIN_PER_SECOND = standardScale<TemperatureRate>()
+
+@DimensionClassifier("Nm/A") interface MotorTorqueConstant
+val NEWTON_METER_PER_AMPERE = standardScale<MotorTorqueConstant>()
+
+@DimensionClassifier("V / rad/s") interface MotorBackEmfConstant
+val VOLT_PER_RADIAN_PER_SECOND = standardScale<MotorBackEmfConstant>()
+
+@DimensionClassifier("Vs") interface MagneticFlux
+val WEBER = standardScale<MagneticFlux>()
+
+inline fun<reified T> Double.classifyAs(scale: SourceQuantityScale<T>) = Quantity(this, scale).classify()
 
 /**
  * Gets a map of dimension type (dimension interface) to a multimap of scale reference (property holding the [QuantityScale]) and its declared [ScaleClassifier]ers.
