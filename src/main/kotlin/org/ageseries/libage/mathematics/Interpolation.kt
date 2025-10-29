@@ -15,6 +15,17 @@ inline fun lerp(from: Double, to: Double, factor: Dual) = (1.0 - factor) * from 
 inline fun lerp(from: Dual, to: Dual, factor: Dual) = (1.0 - factor) * from + factor * to
 
 /**
+ * Classic smoothstep implementation as a cubic polynomial.
+ * - For `t` **in** `[0, 1]`, the return value is a smooth value in `[0, 1]`.
+ * - For `t` **<=** `0`, the result is `0`.
+ * - For `t` **>=** `1`, the result is `1`.
+ * */
+inline fun smoothstep(t: Double): Double {
+    val x = t.coerceIn(0.0, 1.0)
+    return x * x * (3.0 - 2.0 * x)
+}
+
+/**
  * The grid interpolator is used to query arbitrary coordinates inside a [ArrayKDGridD], with interpolation
  * of the neighbor cells.
  * */

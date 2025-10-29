@@ -1,15 +1,16 @@
 package org.ageseries.libage.sim.electrical
 
+import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.COULOMB
 import org.ageseries.libage.data.FARAD
 import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.OHM
-import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.VOLT
 import org.ageseries.libage.data.WATT
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.smoothstep
 import org.ageseries.libage.sim.Pole
 import kotlin.math.min
 import kotlin.math.sign
@@ -570,9 +571,10 @@ class Inductor : NortonSystem(), ReadoutElectricalComponent<Inductor, Inductor.R
 
     override fun getNortonResistance(value: Double) = value / simulation.dt
 
-    override val characteristicName: String
-        get() = "inductance"
-
+    /**
+     * The inductance of the inductor.
+     * Changing this is expensive!
+     * */
     var inductance: Double
         get() = componentValue
         set(value) { componentValue = value }
@@ -632,9 +634,10 @@ class Capacitor : NortonSystem(), ReadoutElectricalComponent<Capacitor, Capacito
 
     override fun getNortonResistance(value: Double) = simulation.dt / value
 
-    override val characteristicName: String
-        get() = "capacitance"
-
+    /**
+     * The capacitance of the capacitor.
+     * Changing this is expensive!
+     * */
     var capacitance: Double
         get() = componentValue
         set(value) { componentValue = value }
@@ -750,12 +753,42 @@ class Capacitor : NortonSystem(), ReadoutElectricalComponent<Capacitor, Capacito
  * In the first step, the capacitor will fully charge, but the source will have dispatched more energy than was stored.
  * Next step, the capacitor will create a back-current that will create a negative power on the source, which when accounted for, will set the energy balance.
  * */
-class CapacitorTrapezoidal : NortonSystem() {
+class CapacitorTrapezoidal : NortonSystem(), ReadoutElectricalComponent<CapacitorTrapezoidal, CapacitorTrapezoidal.Repository> {
+    override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
+        Repository(this)
+    }
+
+    class Repository(val capacitor: CapacitorTrapezoidal) : ReadoutRepository {
+        var capacitance = Quantity(0.0, FARAD)
+            private set
+
+        var charge = Quantity(0.0, COULOMB)
+            private set
+
+        var internalEnergy = Quantity(0.0, JOULE)
+            private set
+
+        var potential = Quantity(0.0, VOLT)
+            private set
+
+        var current = Quantity(0.0, AMPERE)
+            private set
+
+        override fun loadValues() {
+            capacitance = Quantity(capacitor.capacitance)
+            charge = Quantity(capacitor.charge)
+            internalEnergy = Quantity(capacitor.internalEnergy)
+            potential = Quantity(capacitor.potential)
+            current = Quantity(capacitor.current)
+        }
+    }
+
     override fun getNortonResistance(value: Double) = simulation.dt / (2.0 * value)
 
-    override val characteristicName: String
-        get() = "capacitance"
-
+    /**
+     * The capacitance of the capacitor.
+     * Changing this is expensive!
+     * */
     var capacitance: Double
         get() = componentValue
         set(value) { componentValue = value }
@@ -877,6 +910,111 @@ class CapacitorTrapezoidal : NortonSystem() {
 }
 
 /**
+ * Diode with a piecewise linear smoothed model. Implemented as a Norton system.
+ * It is designed to be fast. The real exponential behavior isn't modeled because its stiffness necessitates an iterative solver.
+ * The branches in the piecewise curve are:
+ *  - **Off** - Minimum conductance. This is the diode in reverse bias.
+ *  - **On** - Maximum conductance. This is the diode fully activated.
+ *  - **In-Between** - Interpolated state using a cubic smoothstep at the specified window (see the parameters in the class).
+ * *Conductance varies only over the smoothing window, so in steady-state, the diode is not slowing down the simulation.*
+ * */
+class Diode : NortonSystem(), ReadoutElectricalComponent<Diode, Diode.Repository> {
+    override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
+        Repository(this)
+    }
+
+    class Repository(val diode: Diode) : ReadoutRepository {
+        var potential = Quantity(0.0, VOLT)
+            private set
+
+        var current = Quantity(0.0, AMPERE)
+            private set
+
+        var power = Quantity(0.0, WATT)
+            private set
+
+        override fun loadValues() {
+            potential = Quantity(diode.potential)
+            current = Quantity(diode.current)
+            power = Quantity(diode.power)
+        }
+    }
+
+    /**
+     * The soft potential threshold where the diode activates, in volts.
+     * When the potential is less than or equal to [thresholdPotential], the diode uses [reverseConductance].
+     * When the potential is `V + [smoothingWidth]`, the diode uses [forwardConductance].
+     * When the potential is in the range of `[thresholdPotential], [thresholdPotential] + [smoothingWidth]`, the conductance is being interpolated.
+     * */
+    var thresholdPotential: Double = 0.7
+
+    /**
+     * The smoothing window at [thresholdPotential], in volts. A higher value will make the change smoother.
+     * */
+    var smoothingWidth: Double = 0.1
+
+    /**
+     * The conductance when forward-biased (conducting current).
+     * */
+    var forwardConductance: Double = 1.0
+
+    /**
+     * The conductance when reverse-biased (~open circuit).
+     * */
+    var reverseConductance: Double = 1e-6
+
+    /**
+     * Leakage current when reverse-biased.
+     * */
+    var leakageCurrent: Double = 1e-8
+
+    override fun prepareStep() {
+        val potential = potential
+
+        /**
+         * Gets the smooth blending weight.
+         * */
+        val weight = smoothstep((potential - thresholdPotential) / smoothingWidth)
+
+        /**
+         * Blends the conductance across the window.
+         * */
+        val equivalentConductance = reverseConductance * (1.0 - weight) + forwardConductance * weight
+
+        /**
+         * Linear (in potential) forward biased current:
+         * */
+        val iActive = forwardConductance * (potential - thresholdPotential)
+
+        /**
+         * Blends current:
+         * */
+        val i = leakageCurrent * (1.0 - weight) + iActive * weight
+
+        /**
+         * Computes the Norton system:
+         * */
+        val equivalentCurrent = i - equivalentConductance * potential
+        val equivalentResistance = (1.0 / equivalentConductance).coerceIn(ElectricalSimulation.MIN_RESISTANCE, ElectricalSimulation.MAX_RESISTANCE)
+
+        /**
+         * Updates the resistance only if it changed.
+         * Outside the window, it doesn't change at all, which this can pick up:
+         * */
+        if(!componentValue.approxEq(equivalentResistance)) {
+            componentValue = equivalentResistance
+        }
+
+        nortonCurrent = -equivalentCurrent
+    }
+
+    /**
+     * Gets the power dissipated by the diode.
+     * */
+    val power get() = potential * current
+}
+
+/**
  * A Power-Controlled source.
  * These are difficult to implement *without spending a lot of CPU time* (they are nonlinear and stiff, and they don't usually play well with each other).
  * As such, approximations were made. What I did is (much) more expensive than what 「Grissess」 did, but I really hope it pays off (I would be surprised if it did...).
@@ -934,11 +1072,6 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
 
         powerSourceIndex = -1
     }
-
-    /**
-     * Maps directly to the resistance we set.
-     * */
-    override fun getNortonResistance(value: Double) = value
 
     /**
      * The "potential rating" of the device. This will also be the potential constraint.
@@ -1008,9 +1141,6 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
     init {
         computePVCharacteristicResistance()
     }
-
-    override val characteristicName: String
-        get() = "power source equivalent"
 
     /**
      * The stabilizing resistance of the Norton system.

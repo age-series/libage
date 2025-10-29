@@ -227,7 +227,7 @@ abstract class NortonSystem : Port() {
      * Gets the equivalent resistance of the Norton system.
      * @param value The characteristic value.
      * */
-    protected abstract fun getNortonResistance(value: Double) : Double
+    protected open fun getNortonResistance(value: Double) : Double = value
 
     /**
      * Stamps the equivalent conductance of the Norton system.
@@ -239,11 +239,6 @@ abstract class NortonSystem : Port() {
             getNortonResistance(componentValue)
         )
     }
-
-    /**
-     * Name used in validation errors.
-     * */
-    protected abstract val characteristicName: String
 
     /**
      * The component's characteristic. Causes a change in the conductance.
@@ -258,11 +253,11 @@ abstract class NortonSystem : Port() {
             // Accept positive, except NaN and infinity:
             if(field != value) {
                 if(value < 0.0) {
-                    error("Invalid negative $characteristicName $value!")
+                    error("Invalid negative component value $value!")
                 }
 
                 if(value.isNaN() || value.isInfinite()) {
-                    error("Invalid $characteristicName $value!")
+                    error("Invalid component value $value!")
                 }
 
                 if(isStamped) {
