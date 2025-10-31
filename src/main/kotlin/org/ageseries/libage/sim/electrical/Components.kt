@@ -184,8 +184,10 @@ class PotentialSource : Port(), ReadoutElectricalComponent<PotentialSource, Pote
  * Linear resistor. It contributes a conductance between two nodes in the system.
  * **Updating its resistance is expensive and forbidden for dynamic processes.**
  * _Updating resistance is fine for creating low-frequency switches._
+ *
+ * **Keep in mind that, if you extend this class, your device might get optimized into a [ResistorSystem] and not show up in [ElectricalSimulation.components].**
  * */
-class Resistor : Port(), ReadoutElectricalComponent<Resistor, Resistor.Repository> {
+open class Resistor : Port(), ReadoutElectricalComponent<Resistor, Resistor.Repository> {
     override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
         Repository(this)
     }
@@ -484,6 +486,13 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
      * Calculates the [seriesResistance] and stamps, if [dirty].
      * */
     override fun prepareStep() {
+        /**
+         * Applies steps for components extending the resistor.
+         * */
+        resistors.forEach {
+            it.prepareStep()
+        }
+
         if(!dirty) {
             return
         }
@@ -528,6 +537,13 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
 
         // The calculated potential drop should be ~equal to the actual potential drop, up to floating point error:
         check(currentPotential.approxEq(negative.potential, 1e-4))
+
+        /**
+         * Applies steps for components extending the resistor.
+         * */
+        resistors.forEach {
+            it.finishStep()
+        }
     }
 
     /**
@@ -910,108 +926,104 @@ class CapacitorTrapezoidal : NortonSystem(), ReadoutElectricalComponent<Capacito
 }
 
 /**
- * Diode with a piecewise linear smoothed model. Implemented as a Norton system.
- * It is designed to be fast. The real exponential behavior isn't modeled because its stiffness necessitates an iterative solver.
- * The branches in the piecewise curve are:
- *  - **Off** - Minimum conductance. This is the diode in reverse bias.
- *  - **On** - Maximum conductance. This is the diode fully activated.
- *  - **In-Between** - Interpolated state using a cubic smoothstep at the specified window (see the parameters in the class).
- * *Conductance varies only over the smoothing window, so in steady-state, the diode is not slowing down the simulation.*
+ * Diode implemented as a potential-controlled switch, at `V = 0`. Uses hysteresis to harden against oscillations.
+ * This is the cheapest possible way to implement something **like** a diode.
+ * It doesn't simulate a semiconductor so no nonlinear behavior can be extracted from this, to formulate other simulations (e.g. the solar panel simulation).
+ * All that must be simulated with a model (for example, a [PotentialSource] in series with a [LinearDiode], where the source potential is modulated).
  * */
-class Diode : NortonSystem(), ReadoutElectricalComponent<Diode, Diode.Repository> {
-    override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
-        Repository(this)
-    }
+class LinearDiode : Resistor() {
+    /**
+     * If true, the diode is in its conducting state.
+     * */
+    var isConducting: Boolean
 
-    class Repository(val diode: Diode) : ReadoutRepository {
-        var potential = Quantity(0.0, VOLT)
-            private set
+    /**
+     * Hysteresis voltage to reduce oscillations.
+     * Explanation: The state won't switch if only the potential's sign switched.
+     * We check if the potential changed more than [hysteresisVoltage] above or below `0`. Only then, we apply the switch.
+     */
+    var hysteresisVoltage: Double = 0.01
 
-        var current = Quantity(0.0, AMPERE)
-            private set
+    /**
+     * The resistance in forward bias (that is, when the potential is positive).
+     * */
+    var forwardResistance: Double = 0.01
+        set(value) {
+            if (value < ElectricalSimulation.MIN_RESISTANCE || value > ElectricalSimulation.MAX_RESISTANCE || value.isNaN() || value.isInfinite()) {
+                error("Invalid forward resistance $value!")
+            }
 
-        var power = Quantity(0.0, WATT)
-            private set
+            field = value
 
-        override fun loadValues() {
-            potential = Quantity(diode.potential)
-            current = Quantity(diode.current)
-            power = Quantity(diode.power)
+            if(isConducting) {
+                resistance = value
+            }
         }
+
+    /**
+     * The resistance in reverse bias (that is, when the potential is negative).
+     */
+    var reverseResistance: Double = 1000.0
+        set(value) {
+            if (value < ElectricalSimulation.MIN_RESISTANCE || value > ElectricalSimulation.MAX_RESISTANCE || value.isNaN() || value.isInfinite()) {
+                error("Invalid reverse resistance $value!")
+            }
+
+            field = value
+
+            if(!isConducting) {
+                resistance = value
+            }
+        }
+
+    /**
+     * Sets the diode as initially open.
+     * */
+    init {
+        isConducting = false
+        resistance = reverseResistance
     }
 
     /**
-     * The soft potential threshold where the diode activates, in volts.
-     * When the potential is less than or equal to [thresholdPotential], the diode uses [reverseConductance].
-     * When the potential is `V + [smoothingWidth]`, the diode uses [forwardConductance].
-     * When the potential is in the range of `[thresholdPotential], [thresholdPotential] + [smoothingWidth]`, the conductance is being interpolated.
+     * Switches the resistance, with hysteresis to make it more resistant to oscillations.
      * */
-    var thresholdPotential: Double = 0.7
-
-    /**
-     * The smoothing window at [thresholdPotential], in volts. A higher value will make the change smoother.
-     * */
-    var smoothingWidth: Double = 0.1
-
-    /**
-     * The conductance when forward-biased (conducting current).
-     * */
-    var forwardConductance: Double = 1.0
-
-    /**
-     * The conductance when reverse-biased (~open circuit).
-     * */
-    var reverseConductance: Double = 1e-6
-
-    /**
-     * Leakage current when reverse-biased.
-     * */
-    var leakageCurrent: Double = 1e-8
-
     override fun prepareStep() {
         val potential = potential
 
         /**
-         * Gets the smooth blending weight.
+         * Conductance based on the ideal behavior:
          * */
-        val weight = smoothstep((potential - thresholdPotential) / smoothingWidth)
+        val isInPositiveRegion = potential > 0.0
 
         /**
-         * Blends the conductance across the window.
+         * Apply hysteresis:
          * */
-        val equivalentConductance = reverseConductance * (1.0 - weight) + forwardConductance * weight
-
-        /**
-         * Linear (in potential) forward biased current:
-         * */
-        val iActive = forwardConductance * (potential - thresholdPotential)
-
-        /**
-         * Blends current:
-         * */
-        val i = leakageCurrent * (1.0 - weight) + iActive * weight
-
-        /**
-         * Computes the Norton system:
-         * */
-        val equivalentCurrent = i - equivalentConductance * potential
-        val equivalentResistance = (1.0 / equivalentConductance).coerceIn(ElectricalSimulation.MIN_RESISTANCE, ElectricalSimulation.MAX_RESISTANCE)
-
-        /**
-         * Updates the resistance only if it changed.
-         * Outside the window, it doesn't change at all, which this can pick up:
-         * */
-        if(!componentValue.approxEq(equivalentResistance)) {
-            componentValue = equivalentResistance
+        val targetState = if (isInPositiveRegion != isConducting) {
+            if (isInPositiveRegion) {
+                potential > hysteresisVoltage
+            } else {
+                potential < -hysteresisVoltage
+            }
+        }
+        else {
+            // No state change:
+            isConducting
         }
 
-        nortonCurrent = -equivalentCurrent
-    }
+        /**
+         * Update resistance if needed:
+         * */
+        if (targetState != isConducting) {
+            isConducting = targetState
 
-    /**
-     * Gets the power dissipated by the diode.
-     * */
-    val power get() = potential * current
+            resistance = if (targetState) {
+                forwardResistance
+            }
+            else {
+                reverseResistance
+            }
+        }
+    }
 }
 
 /**
