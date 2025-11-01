@@ -477,15 +477,19 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
      * Calculates the [seriesResistance] and stamps, if [dirty].
      * */
     override fun prepareStep() {
+        resistors.forEach {
+            it.prepareStep()
+        }
+
         if(!dirty) {
             return
         }
 
         dirty = false
 
-        if(isStamped) {
-            val newResistance = resistors.sumOf { it.resistance }
+        val newResistance = resistors.sumOf { it.resistance }
 
+        if(isStamped) {
             if(newResistance != seriesResistance) {
                 simulation.system.changeResistance(
                     positive.node,
@@ -493,10 +497,10 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
                     seriesResistance,
                     newResistance
                 )
-
-                seriesResistance = newResistance
             }
         }
+
+        seriesResistance = newResistance
     }
 
     /**
@@ -548,6 +552,10 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
                     it.potential = reference
                 }
             }
+        }
+
+        resistors.forEach {
+            it.finishStep()
         }
 
         resistors.forEach {
