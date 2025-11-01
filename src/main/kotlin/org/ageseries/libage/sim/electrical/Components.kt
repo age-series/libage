@@ -444,6 +444,24 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
         resistors.forEach {
             it.setSystem(this)
         }
+
+        /**
+         * Loads their presentation (for normal components, it's done in the simulation's constructor):
+         * */
+        resistors.forEach {
+            it.repositoryLayer.loadPresentation()
+        }
+    }
+
+    /**
+     * Sets the simulation for the resistors.
+     * */
+    override fun setSimulation(simulation: ElectricalSimulation) {
+        super.setSimulation(simulation)
+
+        resistors.forEach {
+            it.setSimulation(simulation)
+        }
     }
 
     /**
@@ -468,23 +486,30 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
 
     /**
      * The series resistance of the system.
+     * It can be outside the range specified in [ElectricalSimulation], but I think that is fine (we set the orders of those values to be ~acceptable).
+     * Issues would only occur if tens of max resistance resistors were in series.
      * */
     var seriesResistance = resistors.sumOf { it.resistance }
         private set
 
     /**
      * Calculates the [seriesResistance] and stamps, if [dirty].
+     * Also propagates [prepareStep].
      * */
     override fun prepareStep() {
+        resistors.forEach {
+            it.prepareStep() // e.g. Diodes
+        }
+
         if(!dirty) {
             return
         }
 
         dirty = false
 
-        if(isStamped) {
-            val newResistance = resistors.sumOf { it.resistance }
+        val newResistance = resistors.sumOf { it.resistance }
 
+        if(isStamped) {
             if(newResistance != seriesResistance) {
                 simulation.system.changeResistance(
                     positive.node,
@@ -492,14 +517,14 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
                     seriesResistance,
                     newResistance
                 )
-
-                seriesResistance = newResistance
             }
         }
+
+        seriesResistance = newResistance
     }
 
     /**
-     * Distributes results to the children.
+     * Distributes results to the children. Also propagates [finishStep].
      * This is done in the following manner:
      * - The system is a series of resistors, so the current through them is constant. This allows us to calculate the current through them using the [seriesResistance] and the system's potential drop.
      * - The first node in [virtualNodes] gets the potential of the [positive] node. This potential is also kept track of, as the *current* potential.
@@ -514,17 +539,33 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
 
         val current = (p - n) / seriesResistance
 
-        var currentPotential = p
-        virtualNodes.first().potential = currentPotential
+        var potentialAtNode = p
+        virtualNodes.first().potential = potentialAtNode
 
         resistors.forEachIndexed { index, resistor ->
-            currentPotential -= current * resistor.resistance
+            potentialAtNode -= current * resistor.resistance
             val node = virtualNodes[index + 1]
-            node.potential = currentPotential
+            node.potential = potentialAtNode
         }
 
         // The calculated potential drop should be ~equal to the actual potential drop, up to floating point error:
-        check(currentPotential.approxEq(n, 1e-4))
+        check(potentialAtNode.approxEq(n, 1e-4 /* Very generous */)) {
+            "Resistor System condition wasn't satisfied: expected potential of $n, got $potentialAtNode"
+        }
+
+        /**
+         * After we set their new states, we can finish the step.
+         * */
+        resistors.forEach {
+            it.finishStep()
+        }
+
+        /**
+         * Also updates their presentation:
+         * */
+        resistors.forEach {
+            it.repositoryLayer.loadAndSwap()
+        }
     }
 
     /**

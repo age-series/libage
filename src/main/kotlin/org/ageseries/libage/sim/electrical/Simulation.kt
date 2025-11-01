@@ -111,7 +111,7 @@ abstract class ElectricalComponent {
      * */
     internal open fun finishStep() { }
 
-    internal fun setSimulation(simulation: ElectricalSimulation) {
+    internal open fun setSimulation(simulation: ElectricalSimulation) {
         simulationInternal = simulation
     }
 
@@ -167,7 +167,10 @@ class ElectricalReadoutRepositoryLayer<Repository : ReadoutRepository>(factory: 
 
     private var unpresentedCopy = factory()
 
-    init {
+    /**
+     * Used to load the initial values of the component, before the simulation starts running.
+     * */
+    internal fun loadPresentation() {
         presentedCopy.loadValues()
     }
 
@@ -1201,6 +1204,10 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         system = System(this)
         sensitivity = SensitivityAnalysis(this)
         sourceSystem = if(powerSources.isNotEmpty()) NonlinearSourceSolver(this) else null
+
+        repositoryComponents.forEach {
+            it.repositoryLayer.loadPresentation()
+        }
     }
 
     var matrixChanged = false
