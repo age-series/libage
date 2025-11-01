@@ -549,6 +549,10 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
                 }
             }
         }
+
+        resistors.forEach {
+            it.repositoryLayer.loadAndSwap()
+        }
     }
 
     /**
