@@ -1,5 +1,6 @@
 package org.ageseries.libage.sim.electrical
 
+import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.mathematics.approxEq
@@ -26,7 +27,16 @@ import kotlin.math.sign
  * Representation for an electrical pin. This allows the downstream code to deal with localized pins of components, instead of nodes.
  * The pins that are connected together form a `Pin Star`, which will be converted into an electrical node.
  * */
-class ElectricalPin(val component: ElectricalComponent) {
+class ElectricalPin(val component: ElectricalComponent, val symbol: String) {
+    companion object {
+        private val ID_GENERATOR = AtomicInteger()
+    }
+
+    /**
+     * Gets the friendly [toString] ID (see [ID_GENERATOR]).
+     * */
+    val displayId = ID_GENERATOR.getAndIncrement()
+
     private var nodeInternal: ElectricalNode? = null
     val node get() = nodeInternal ?: if(component.isInSimulation) null else error("Cannot get node of pin from $component. Not added to simulation!")
 
@@ -40,22 +50,24 @@ class ElectricalPin(val component: ElectricalComponent) {
     }
 
     /**
-     * Gets the potential of the node. Returns `0` if a node doesn't exist (the pin is floating).
+     * Gets the potential of the node. Returns [OptionalDouble.EMPTY] if the pin isn't attached to a node.
      * */
-    @Suppress("IfThenToElvis")
-    val potential: Double get() {
+    val potential: OptionalDouble get() {
         val node = nodeInternal
 
         return if(node == null) {
-            0.0
-        } else {
-            node.potential
+            OptionalDouble.EMPTY
+        }
+        else {
+            OptionalDouble.wrap(node.potential)
         }
     }
 
     fun simulationDestroyed() {
         nodeInternal = null
     }
+
+    override fun toString() = "Pin$displayId$symbol"
 }
 
 /**
@@ -194,13 +206,24 @@ class ElectricalNode(val id: Int, val pins: Array<ElectricalPin>) {
  * The name is from circuit theory: a pair of two terminals obeying the port condition: the currents flowing into the two nodes must be equal and opposite.
  * */
 abstract class Port : ElectricalComponent() {
-    val positive = ElectricalPin(this)
-    val negative = ElectricalPin(this)
+    val positive = ElectricalPin(this, Pole.Positive.symbol)
+    val negative = ElectricalPin(this, Pole.Negative.symbol)
 
     /**
      * Gets the potential across the device.
+     * If one of the pins is not attached to a node, this potential is `0`.
      * */
-    open val potential get() = positive.potential - negative.potential
+    open val potential: Double get() {
+        val p = positive.potential
+        val n = negative.potential
+
+        return if(p.isPresent && n.isPresent) {
+            p.unwrap() - n.unwrap()
+        }
+        else {
+            0.0
+        }
+    }
 
     override fun simulationDestroyed() {
         super.simulationDestroyed()
@@ -217,6 +240,15 @@ abstract class Port : ElectricalComponent() {
         Pole.Negative -> negative
     }
 
+    enum class Pole(val symbol: String) {
+        Positive("+"),
+        Negative("-");
+
+        val opposite get() = when(this) {
+            Positive -> Negative
+            Negative -> Positive
+        }
+    }
 }
 
 /**

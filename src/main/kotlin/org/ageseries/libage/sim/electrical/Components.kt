@@ -1,16 +1,7 @@
 package org.ageseries.libage.sim.electrical
 
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.AMPERE
-import org.ageseries.libage.data.COULOMB
-import org.ageseries.libage.data.FARAD
-import org.ageseries.libage.data.HENRY
-import org.ageseries.libage.data.JOULE
-import org.ageseries.libage.data.OHM
-import org.ageseries.libage.data.VOLT
-import org.ageseries.libage.data.WATT
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.smoothstep
 import org.ageseries.libage.sim.Pole
 import kotlin.math.min
 import kotlin.math.sign
@@ -486,13 +477,6 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
      * Calculates the [seriesResistance] and stamps, if [dirty].
      * */
     override fun prepareStep() {
-        /**
-         * Applies steps for components extending the resistor.
-         * */
-        resistors.forEach {
-            it.prepareStep()
-        }
-
         if(!dirty) {
             return
         }
@@ -522,27 +506,48 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
      * - The first node in [virtualNodes] gets the potential of the [positive] node. This potential is also kept track of, as the *current* potential.
      * - Each resistor is traversed. The resistance causes a drop in the *current* potential. This drop is subtracted from the *current* potential, and the virtual node's potential is set to the *current* potential.
      * - At the end, the last virtual node's potential is ~equal to the potential of the [negative] node.
+     *
+     * *If any of the pins is floating, the results are all `0`.*
      * */
     override fun finishStep() {
-        val current = potential / seriesResistance
+        val p = positive.potential
+        val n = negative.potential
 
-        var currentPotential = positive.potential
-        virtualNodes.first().potential = currentPotential
+        if(p.isPresent && n.isPresent) {
+            val current = (p.unwrap() - n.unwrap()) / seriesResistance
 
-        resistors.forEachIndexed { index, resistor ->
-            currentPotential -= current * resistor.resistance
-            val node = virtualNodes[index + 1]
-            node.potential = currentPotential
+            var currentPotential = p.unwrap()
+            virtualNodes.first().potential = currentPotential
+
+            resistors.forEachIndexed { index, resistor ->
+                currentPotential -= current * resistor.resistance
+                val node = virtualNodes[index + 1]
+                node.potential = currentPotential
+            }
+
+            // The calculated potential drop should be ~equal to the actual potential drop, up to floating point error:
+            check(currentPotential.approxEq(n.unwrap(), 1e-4))
         }
+        else {
+            if (!p.isPresent && !n.isPresent) {
+                virtualNodes.forEach {
+                    it.potential = 0.0
+                }
+            }
+            else {
+                // Keeps it more consistent with the non-optimized case:
 
-        // The calculated potential drop should be ~equal to the actual potential drop, up to floating point error:
-        check(currentPotential.approxEq(negative.potential, 1e-4))
+                val reference = if (p.isPresent) {
+                    p.unwrap()
+                }
+                else {
+                    n.unwrap()
+                }
 
-        /**
-         * Applies steps for components extending the resistor.
-         * */
-        resistors.forEach {
-            it.finishStep()
+                virtualNodes.forEach {
+                    it.potential = reference
+                }
+            }
         }
     }
 
