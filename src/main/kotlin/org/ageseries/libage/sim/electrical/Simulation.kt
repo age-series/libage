@@ -377,6 +377,9 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         var USE_VALIDATION = false
     }
 
+    var destroyed = false
+        private set
+
     /**
      * If true, components need to start applying deltas when their values change (they have been stamped).
      * */
@@ -1234,6 +1237,12 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
     var knownsChanged = false
         private set
 
+    private fun validateUsage() {
+        if(destroyed) {
+            error("Cannot use electrical simulation after destroyed")
+        }
+    }
+
     internal fun setMatrixChanged() {
         matrixChanged = true
     }
@@ -1323,6 +1332,8 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         private set
 
     fun step() {
+        validateUsage()
+
         if(system.constructionMode) {
             /**
              * Constructs the shape of the matrix and sets the initial knowns vector.
@@ -1399,6 +1410,8 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
      * */
     @Suppress("LocalVariableName")
     fun computeTheveninForNortonSystem(nortonSystem: NortonSystem) : Thevenin {
+        validateUsage()
+
         val nodeP = nortonSystem.positive.node
         val nodeN = nortonSystem.negative.node
 
@@ -1417,5 +1430,15 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         val RthSafe = if (Rth <= 0.0 || Rth.isNaN() || Rth.isInfinite()) Double.POSITIVE_INFINITY else Rth
 
         return Thevenin(Vth, RthSafe)
+    }
+
+    fun destroy() {
+        validateUsage()
+
+        components.forEach {
+            it.simulationDestroyed()
+        }
+
+        destroyed = true
     }
 }
