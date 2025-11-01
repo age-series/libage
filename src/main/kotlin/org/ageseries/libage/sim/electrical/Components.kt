@@ -534,6 +534,17 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
     fun setChildChanged() {
         dirty = true
     }
+
+    /**
+     * Clears the virtual nodes from the resistors.
+     * */
+    override fun simulationDestroyed() {
+        super.simulationDestroyed()
+
+        resistors.forEach {
+            it.simulationDestroyed()
+        }
+    }
 }
 
 /**
