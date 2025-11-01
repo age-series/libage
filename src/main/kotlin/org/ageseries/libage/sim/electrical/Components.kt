@@ -558,6 +558,14 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
     fun setChildChanged() {
         dirty = true
     }
+
+    override fun simulationDestroyed() {
+        super.simulationDestroyed()
+
+        resistors.forEach {
+            it.simulationDestroyed()
+        }
+    }
 }
 
 /**

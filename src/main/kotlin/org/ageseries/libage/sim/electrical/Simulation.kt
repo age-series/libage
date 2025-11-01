@@ -44,7 +44,9 @@ class ElectricalPin(val component: ElectricalComponent, val symbol: String) {
      * Sets the generated electrical node. It can be a real node in the simulation, the ground node, or a virtual node from the optimizer.
      * */
     internal fun setNode(node: ElectricalNode) {
-        check(nodeInternal == null)
+        check(nodeInternal == null) {
+            "Tried to set node for pin $this, but the previous simulation wasn't destroyed!"
+        }
 
         nodeInternal = node
     }
