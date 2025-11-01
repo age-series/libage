@@ -2,7 +2,6 @@ package org.ageseries.libage.sim.electrical
 
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.sim.Pole
 import kotlin.math.min
 import kotlin.math.sign
 import kotlin.math.sqrt
@@ -477,19 +476,15 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
      * Calculates the [seriesResistance] and stamps, if [dirty].
      * */
     override fun prepareStep() {
-        resistors.forEach {
-            it.prepareStep()
-        }
-
         if(!dirty) {
             return
         }
 
         dirty = false
 
-        val newResistance = resistors.sumOf { it.resistance }
-
         if(isStamped) {
+            val newResistance = resistors.sumOf { it.resistance }
+
             if(newResistance != seriesResistance) {
                 simulation.system.changeResistance(
                     positive.node,
@@ -497,10 +492,10 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
                     seriesResistance,
                     newResistance
                 )
+
+                seriesResistance = newResistance
             }
         }
-
-        seriesResistance = newResistance
     }
 
     /**
@@ -517,50 +512,19 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
         val p = positive.potential
         val n = negative.potential
 
-        if(p.isPresent && n.isPresent) {
-            val current = (p.unwrap() - n.unwrap()) / seriesResistance
+        val current = (p - n) / seriesResistance
 
-            var currentPotential = p.unwrap()
-            virtualNodes.first().potential = currentPotential
+        var currentPotential = p
+        virtualNodes.first().potential = currentPotential
 
-            resistors.forEachIndexed { index, resistor ->
-                currentPotential -= current * resistor.resistance
-                val node = virtualNodes[index + 1]
-                node.potential = currentPotential
-            }
-
-            // The calculated potential drop should be ~equal to the actual potential drop, up to floating point error:
-            check(currentPotential.approxEq(n.unwrap(), 1e-4))
-        }
-        else {
-            if (!p.isPresent && !n.isPresent) {
-                virtualNodes.forEach {
-                    it.potential = 0.0
-                }
-            }
-            else {
-                // Keeps it more consistent with the non-optimized case:
-
-                val reference = if (p.isPresent) {
-                    p.unwrap()
-                }
-                else {
-                    n.unwrap()
-                }
-
-                virtualNodes.forEach {
-                    it.potential = reference
-                }
-            }
+        resistors.forEachIndexed { index, resistor ->
+            currentPotential -= current * resistor.resistance
+            val node = virtualNodes[index + 1]
+            node.potential = currentPotential
         }
 
-        resistors.forEach {
-            it.finishStep()
-        }
-
-        resistors.forEach {
-            it.repositoryLayer.loadAndSwap()
-        }
+        // The calculated potential drop should be ~equal to the actual potential drop, up to floating point error:
+        check(currentPotential.approxEq(n, 1e-4))
     }
 
     /**
@@ -569,14 +533,6 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
      * */
     fun setChildChanged() {
         dirty = true
-    }
-
-    override fun simulationDestroyed() {
-        super.simulationDestroyed()
-
-        resistors.forEach {
-            it.simulationDestroyed()
-        }
     }
 }
 

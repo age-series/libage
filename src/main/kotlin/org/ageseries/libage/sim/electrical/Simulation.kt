@@ -38,14 +38,14 @@ class ElectricalPin(val component: ElectricalComponent, val symbol: String) {
     val displayId = ID_GENERATOR.getAndIncrement()
 
     private var nodeInternal: ElectricalNode? = null
-    val node get() = nodeInternal ?: if(component.isInSimulation) null else error("Cannot get node of pin from $component. Not added to simulation!")
+    val node get() = if(component.isInSimulation) nodeInternal!! else error("Cannot get node of pin from $component. Not added to simulation!")
 
     /**
      * Sets the generated electrical node. It can be a real node in the simulation, the ground node, or a virtual node from the optimizer.
      * */
     internal fun setNode(node: ElectricalNode) {
         check(nodeInternal == null) {
-            "Tried to set node for pin $this, but the previous simulation wasn't destroyed!"
+            "Tried to set new node for pin $this, but previous simulation wasn't destroyed!"
         }
 
         nodeInternal = node
@@ -54,22 +54,13 @@ class ElectricalPin(val component: ElectricalComponent, val symbol: String) {
     /**
      * Gets the potential of the node. Returns [OptionalDouble.EMPTY] if the pin isn't attached to a node.
      * */
-    val potential: OptionalDouble get() {
-        val node = nodeInternal
-
-        return if(node == null) {
-            OptionalDouble.EMPTY
-        }
-        else {
-            OptionalDouble.wrap(node.potential)
-        }
-    }
+    val potential get() = if(component.isInSimulation) node.potential else 0.0
 
     fun simulationDestroyed() {
         nodeInternal = null
     }
 
-    override fun toString() = "Pin$displayId$symbol"
+    override fun toString() = "Pin$displayId$symbol$component"
 }
 
 /**
@@ -129,6 +120,11 @@ abstract class ElectricalComponent {
     }
 
     override fun toString() = "${this.javaClass.simpleName}$displayId"
+
+    /**
+     * List of all pins in the component.
+     * */
+    abstract val allPins: List<ElectricalPin>
 }
 
 /**
@@ -210,22 +206,13 @@ class ElectricalNode(val id: Int, val pins: Array<ElectricalPin>) {
 abstract class Port : ElectricalComponent() {
     val positive = ElectricalPin(this, Pole.Positive.symbol)
     val negative = ElectricalPin(this, Pole.Negative.symbol)
+    override val allPins = listOf(positive, negative)
 
     /**
      * Gets the potential across the device.
      * If one of the pins is not attached to a node, this potential is `0`.
      * */
-    open val potential: Double get() {
-        val p = positive.potential
-        val n = negative.potential
-
-        return if(p.isPresent && n.isPresent) {
-            p.unwrap() - n.unwrap()
-        }
-        else {
-            0.0
-        }
-    }
+    open val potential: Double get() = positive.potential - negative.potential
 
     override fun simulationDestroyed() {
         super.simulationDestroyed()
@@ -471,12 +458,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         /**
          * Stamps a conductance between the two nodes. Legal to call if and only if, during construction, a call for the same nodes was done so the entries were created.
          * */
-        fun stampResistance(nodeP: ElectricalNode?, nodeN: ElectricalNode?, resistance: Double) {
-            if(nodeP == null || nodeN == null) {
-                // Floating component, discarded:
-                return
-            }
-
+        fun stampResistance(nodeP: ElectricalNode, nodeN: ElectricalNode, resistance: Double) {
             val conductance = 1.0 / resistance
 
             val groundNode = simulation.groundNode
@@ -504,7 +486,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
          * Legal to call if and only if, during construction, a [stampResistance] call for the same nodes was done so the entries were created.
          * Evidently, the [previous] should have been contributed previously, or this call will result in undefined behavior.
          * */
-        fun changeResistance(nodeP: ElectricalNode?, nodeN: ElectricalNode?, previous: Double, new: Double) {
+        fun changeResistance(nodeP: ElectricalNode, nodeN: ElectricalNode, previous: Double, new: Double) {
             /**
              * We do not apply the delta update here.
              * The difference between [previous] and [new] can be very small, so when we compute the conductance of the delta, we can have issues.
@@ -516,13 +498,8 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         /**
          * Stamps the topological information for a potential source. **Only legal to call during construction.**
          * */
-        fun stampVoltageStructure(i: Int, nodeP: ElectricalNode?, nodeN: ElectricalNode?) {
+        fun stampVoltageStructure(i: Int, nodeP: ElectricalNode, nodeN: ElectricalNode) {
             validator?.requireConstruction()
-
-            if(nodeP == null || nodeN == null) {
-                // Floating component, discarded:
-                return
-            }
 
             val column = simulation.nodes.size + i
             val groundNode = simulation.groundNode
@@ -558,12 +535,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         /**
          * Adds a current flowing from [nodeN] to [nodeP]. Legal to call anywhere.
          * */
-        fun stampCurrentKnown(nodeP: ElectricalNode?, nodeN: ElectricalNode?, current: Double) {
-            if(nodeP == null || nodeN == null) {
-                // Floating component, discarded:
-                return
-            }
-
+        fun stampCurrentKnown(nodeP: ElectricalNode, nodeN: ElectricalNode, current: Double) {
             val groundNode = simulation.groundNode
 
             if(nodeP != groundNode) {
@@ -580,7 +552,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         /**
          * Changes a current flowing from [nodeN] to [nodeP] from [previous] to [new]. Legal to call anywhere.
          * */
-        fun changeCurrentKnown(nodeP: ElectricalNode?, nodeN: ElectricalNode?, previous: Double, new: Double) {
+        fun changeCurrentKnown(nodeP: ElectricalNode, nodeN: ElectricalNode, previous: Double, new: Double) {
             stampCurrentKnown(nodeP, nodeN, new - previous)
         }
     }

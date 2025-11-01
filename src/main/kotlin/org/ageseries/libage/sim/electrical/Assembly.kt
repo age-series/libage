@@ -16,7 +16,7 @@ import org.ageseries.libage.utils.putUnique
  * */
 class ElectricalCircuitCompiler(val subSolverData: ElectricalCircuitForestBuilder.SubSolverData) {
     companion object {
-        var USE_VALIDATION = true
+        var USE_VALIDATION = false
     }
 
     /**
@@ -47,19 +47,24 @@ class ElectricalCircuitCompiler(val subSolverData: ElectricalCircuitForestBuilde
          * */
         val disjointSets = HashMap<ElectricalPin, PinDisjointSet>()
 
-        subSolverData.pinsInConnections.forEach { pin ->
-            disjointSets.putUnique(pin, PinDisjointSet(false))
+        /**
+         * Build nodes for floating pins as well.
+         * This is necessary, unfortunately. I can explain more if you ask me and I remember why.
+         * */
+        subSolverData.nodes.forEach { node ->
+            node.allPins.forEach { pin ->
+                disjointSets.putUnique(pin, PinDisjointSet(false))
+            }
         }
 
+        /**
+         * Apply groundings:
+         * */
         subSolverData.groundings.forEach { pin ->
             val set = disjointSets[pin]
+                ?: error("Found a grounding, but the disjoint set for the pin wasn't created!")
 
-            if(set == null) {
-                disjointSets.putUnique(pin, PinDisjointSet(true))
-            }
-            else {
-                set.grounded = true
-            }
+            set.grounded = true
         }
 
         /**
@@ -81,7 +86,10 @@ class ElectricalCircuitCompiler(val subSolverData: ElectricalCircuitForestBuilde
             forest[representative].add(pin)
         }
 
-        check(forest.map.keys.any { it.grounded}) // Reference node must exist
+        // Reference node must exist:
+        check(forest.map.keys.any { it.grounded }) {
+            "Did not find reference node at forest stage!"
+        }
 
         return forest
     }

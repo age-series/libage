@@ -54,7 +54,7 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
             return null
         }
 
-        var USE_VALIDATION = true
+        var USE_VALIDATION = false
     }
 
     /**
