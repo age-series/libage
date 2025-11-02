@@ -340,6 +340,16 @@ abstract class NortonSystem : Port() {
      * Gets the current Norton conductance.
      * */
     val nortonConductance get() = 1.0 / getNortonResistance(componentValue)
+
+    /**
+     * Resets the Norton current.
+     * Not doing so creates an invalid state in the new simulation.
+     * */
+    override fun simulationDestroyed() {
+        super.simulationDestroyed()
+
+        nortonCurrent = 0.0
+    }
 }
 
 /**

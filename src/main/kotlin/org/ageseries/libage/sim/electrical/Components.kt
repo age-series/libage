@@ -645,6 +645,12 @@ class Inductor : NortonSystem(), ReadoutElectricalComponent<Inductor, Inductor.R
      * Gets the energy stored in the electromagnetic field.
      * */
     val energy: Double get() = 0.5 * inductance * (current * current)
+
+    override fun simulationDestroyed() {
+        super.simulationDestroyed()
+
+        flux = 0.0 // Is this right?
+    }
 }
 
 /**

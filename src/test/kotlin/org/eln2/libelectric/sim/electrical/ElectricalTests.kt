@@ -583,4 +583,63 @@ internal class ElectricalTests {
             assertTrue(load.power > 0.0)
         }
     }
+
+    @Test
+    fun testCapacitorMoveSimulation() {
+        val cap = Capacitor()
+
+        var builder = ElectricalCircuitForestBuilder()
+        builder.add(cap)
+
+        cap.charge = 1.0
+
+        val c1 = builder.unique()
+        c1.step()
+
+        assertEquals(cap.potential, 1.0)
+        assertEquals(cap.charge, 1.0)
+
+        c1.destroy()
+
+        builder = ElectricalCircuitForestBuilder()
+        builder.add(cap)
+
+        val c2 = builder.unique()
+        c2.step()
+
+        assertEquals(cap.potential, 1.0)
+        assertEquals(cap.charge, 1.0)
+    }
+
+    /**
+     * Tests state reset on simulation change for power sources.
+     * */
+    @Test
+    fun testPowerSourceMoveSimulation() {
+        val src = PowerSource()
+
+        var builder = ElectricalCircuitForestBuilder()
+        builder.add(src)
+
+        src.maxPower = 800.0
+        src.maxPotential = 32.0
+        src.targetPower = 800.0
+
+        val c1 = builder.unique()
+        c1.step()
+
+        assertEquals(src.potential, src.potential)
+        assertEquals(src.power, 0.0)
+
+        c1.destroy()
+
+        builder = ElectricalCircuitForestBuilder()
+        builder.add(src)
+
+        val c2 = builder.unique()
+        c2.step()
+
+        assertEquals(src.potential, src.potential)
+        assertEquals(src.power, 0.0)
+    }
 }
