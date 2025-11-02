@@ -1,10 +1,8 @@
 package org.ageseries.libage.sim.electrical
 
-import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.electrical.ElectricalComponent.Companion.ID_GENERATOR
 import org.ageseries.libage.sim.electrical.ElectricalNode.Companion.GROUND_ID
 import org.ageseries.libage.sim.electrical.ElectricalNode.Companion.VIRTUAL_ID
@@ -52,9 +50,14 @@ class ElectricalPin(val component: ElectricalComponent, val symbol: String) {
     }
 
     /**
-     * Gets the potential of the node. Returns [OptionalDouble.EMPTY] if the pin isn't attached to a node.
+     * Gets the potential of the node.
      * */
-    val potential get() = if(component.isInSimulation) node.potential else 0.0
+    val potential: Double get() {
+        val node = nodeInternal
+            ?: return 0.0
+
+        return node.potential
+    }
 
     fun simulationDestroyed() {
         nodeInternal = null
@@ -195,6 +198,9 @@ class ElectricalNode(val id: Int, val pins: Array<ElectricalPin>) {
         const val VIRTUAL_ID = -2
     }
 
+    val isGround get() = id == GROUND_ID
+    val isVirtual get() = id == VIRTUAL_ID
+
     /**
      * Set by the solver or by the optimized system.
      * */
@@ -209,11 +215,11 @@ class ElectricalNode(val id: Int, val pins: Array<ElectricalPin>) {
 abstract class Port : ElectricalComponent() {
     val positive = ElectricalPin(this, Pole.Positive.symbol)
     val negative = ElectricalPin(this, Pole.Negative.symbol)
+
     override val allPins = listOf(positive, negative)
 
     /**
      * Gets the potential across the device.
-     * If one of the pins is not attached to a node, this potential is `0`.
      * */
     open val potential: Double get() = positive.potential - negative.potential
 
@@ -646,34 +652,34 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             private set
 
         /**
-         * Gets the variable term for the residual of [device].
-         * The term takes into account the desired power, but instead becomes a penalty when the potential constraint is violated.
+         * Gets the residual for [device].
+         * The residual takes into account the desired power, but instead becomes a penalty when the potential constraint is violated.
          * */
-        fun getResidualTermForDevice(device: PowerSource) : Double {
+        fun getResidualForDevice(device: PowerSource) : Double {
             val desiredPower = device.targetPower.coerceIn(0.0, device.maxPower)
             val potentialConstraint = device.maxPotential
             val potentialAbs = abs(device.potential)
 
             if(potentialAbs > potentialConstraint) {
                 // Outside the potential constraint. Add a proportional penalty term.
-                return -(potentialAbs - potentialConstraint)
+                return -(potentialAbs - potentialConstraint) - device.power // Do we remove this subtraction?
             }
 
             val blendStart = potentialConstraint * device.blendRegion
 
             if (potentialAbs <= blendStart) {
                 // Constant power region:
-                return desiredPower
+                return desiredPower - device.power
             }
 
             // Blending region:
             val k = 1.0 - (potentialAbs - blendStart) / (potentialConstraint - blendStart)
 
-            return k * desiredPower
+            return k * desiredPower - device.power
         }
 
         /**
-         * Evaluates residual `f(x) = (targetPower OR penalty) - measuredPower`, by setting the Norton currents and solving the system.
+         * Evaluates residual `f(x) = (targetPower - measuredPower OR penalty)`, by setting the Norton currents and solving the system.
          * @param x The Norton currents to apply.
          * @param out The result vector.
          * */
@@ -697,7 +703,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             var maxResidual = 0.0
 
             simulation.powerSources.forEachIndexed { i, device ->
-                val powerResidual = getResidualTermForDevice(device) - device.power
+                val powerResidual = getResidualForDevice(device)
 
                 out.set(i, powerResidual)
 
@@ -764,51 +770,51 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                  * `i` is the row index (dFi/d...)
                  */
                 for (i in 0 until size) {
-                    val deviceI = simulation.powerSources[i]
-                    val potentialI = deviceI.potential
+                    val device_i = simulation.powerSources[i]
+                    val potential_i = device_i.potential
 
-                    val positiveI = deviceI.positive.node
-                    val negativeI = deviceI.negative.node
+                    val positive_i = device_i.positive.node
+                    val negative_i = device_i.negative.node
 
-                    val s1 = if(positiveI == null || positiveI.id == -1) 0.0 else sensitivity[positiveI.id]
-                    val s2 = if(negativeI == null || negativeI.id == -1) 0.0 else sensitivity[negativeI.id]
+                    val s1 = if(positive_i.isGround) 0.0 else sensitivity[positive_i.id]
+                    val s2 = if(negative_i.isGround) 0.0 else sensitivity[negative_i.id]
 
                     // dVi/dINk: How potential of source i changes
                     // with respect to Norton current of source k
-                    val dVidINk = s1 - s2
+                    val dVi_dINk = s1 - s2
 
-                    val INi = deviceI.nortonCurrent
-                    val RNi = deviceI.characteristicResistance // Constant
+                    val INi = device_i.nortonCurrent
+                    val RNi = device_i.characteristicResistance // Constant
 
                     // Term 1: Calculate d(P_actual,i) / d(INk)
-                    var dPadINk = (INi - 2.0 * potentialI / RNi) * dVidINk
+                    var dPa_dINk = (INi - 2.0 * potential_i / RNi) * dVi_dINk
                     if (i == k) {
-                        dPadINk += potentialI
+                        dPa_dINk += potential_i
                     }
 
                     // TERM 2: Calculate d(Ptargeti) / d(INk)
-                    var dPtdVi = 0.0 // This is d(P_target_i) / d(V_i)
-                    val V_i = potentialI
-                    val V = abs(V_i)
-                    val C = deviceI.maxPotential
-                    val V_b = C * deviceI.blendRegion
+                    var dPt_dVi = 0.0 // This is d(P_target_i) / d(V_i)
+                    val Vi = potential_i
+                    val V = abs(Vi)
+                    val C = device_i.maxPotential
+                    val Vb = C * device_i.blendRegion
 
                     if (V > C) {
                         // Penalty region: Pt = -(V - C)
-                        dPtdVi = -sign(V_i)
-                    } else if (V > V_b) {
+                        dPt_dVi = -sign(Vi)
+                    } else if (V > Vb) {
                         // Blend region: Pt = Pd * (1 - k)
-                        val Pd = deviceI.targetPower.coerceIn(0.0, deviceI.maxPower)
-                        val dVdVb = C - V_b
+                        val Pd = device_i.targetPower.coerceIn(0.0, device_i.maxPower)
+                        val dV_dVb = C - Vb
 
                         // Avoid division by zero if blendRegion = 1.0
-                        if (dVdVb > 1e-9) {
-                            dPtdVi = -Pd / dVdVb * sign(V_i)
+                        if (dV_dVb > 1e-9) {
+                            dPt_dVi = -Pd / dV_dVb * sign(Vi)
                         }
                     }
 
-                    val dPt_dINk = dPtdVi * dVidINk
-                    val Jik = dPt_dINk - dPadINk
+                    val dPt_dINk = dPt_dVi * dVi_dINk
+                    val Jik = dPt_dINk - dPa_dINk
 
                     J.set(i, k, Jik)
 
@@ -1232,22 +1238,35 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
 
     /**
      * Copies MNA results into the various classes.
+     * Can throw [InvalidResultsException].
      * */
     private fun copyResults() {
+        /**
+         * Copies potential into the nodes:
+         * */
         for (i in 0 until nodes.size) {
-            nodes[i].potential = system.unknown[i]
+            val result = system.unknown[i]
+            val node = nodes[i]
+
+            if(result.isNaN() || result.isInfinite()) {
+                throw InvalidResultsException(this, node)
+            }
+
+            node.potential = result
         }
 
         /**
-         * To Grissess: the libage convention was current is positive when it is leaving the source.
-         * Well, in standard formulation, current leaving the source is negative.
-         * I add a minus here so I don't have to adjust code downstream.
-         *
-         * P.S. I might remove it
+         * Copies current into the potential sources:
          * */
-
         for (i in 0 until potentialSources.size) {
-            potentialSources[i].current = -system.unknown[nodes.size + i]
+            val result = -system.unknown[nodes.size + i]
+            val source = potentialSources[i]
+
+            if(result.isNaN() || result.isInfinite()) {
+                throw InvalidResultsException(this, source)
+            }
+
+            source.current = result
         }
     }
 
@@ -1310,6 +1329,12 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
     var lastPowerSourceTime = Quantity(0.0, SECOND)
         private set
 
+    /**
+     * Steps the system.
+     * Can throw:
+     * [SingularSystemException] when the linear system factorization failed.
+     * [InvalidResultsException] when the result currents or potentials are NaN or Infinity.
+     * */
     fun step() {
         validateUsage()
 
@@ -1352,7 +1377,13 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
          * Solves the new system, if necessary.
          * */
         if(matrixChanged || knownsChanged) {
-            solver.solve(system.known, system.unknown)
+            try {
+                solver.solve(system.known, system.unknown)
+            }
+            catch (e: Exception) {
+                throw SingularSystemException(this, e)
+            }
+
             copyResults()
             matrixChanged = false
             knownsChanged = false
@@ -1397,8 +1428,8 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         sensitivity.solve(nodeP, nodeN)
         val results = sensitivity.results
 
-        val s1 = if (nodeP == null || nodeP.id == -1) 0.0 else results[nodeP.id]
-        val s2 = if (nodeN == null || nodeN.id == -1) 0.0 else results[nodeN.id]
+        val s1 = if (nodeP.isGround) 0.0 else results[nodeP.id]
+        val s2 = if (nodeN.isGround) 0.0 else results[nodeN.id]
 
         val Rth = s1 - s2
         val V = nortonSystem.potential
@@ -1420,4 +1451,15 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
 
         destroyed = true
     }
+
+    /**
+     * Thrown when the **main MNA solve** fails (power sources should handle their failures by themselves).
+     * */
+    class SingularSystemException(val simulation: ElectricalSimulation, ejmlException: Exception) : Exception(ejmlException)
+
+    /**
+     * Thrown when the results are invalid (NaN or infinity).
+     * @param obj The node or device where the error was discovered (if it's any help).
+     * */
+    class InvalidResultsException(val simulation: ElectricalSimulation, val obj: Any) : Exception()
 }

@@ -2,6 +2,7 @@ package org.ageseries.libage.sim.electrical
 
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sign
 import kotlin.math.sqrt
@@ -552,7 +553,6 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
         check(potentialAtNode.approxEq(n, 1e-4 /* Very generous */)) {
             "Resistor System condition wasn't satisfied: expected potential of $n, got $potentialAtNode"
         }
-
         /**
          * After we set their new states, we can finish the step.
          * */
@@ -652,6 +652,10 @@ class Inductor : NortonSystem(), ReadoutElectricalComponent<Inductor, Inductor.R
  * Uses *Backward Euler* integration.
  * */
 class Capacitor : NortonSystem(), ReadoutElectricalComponent<Capacitor, Capacitor.Repository> {
+    companion object {
+        private const val CONSISTENCY_TOLERANCE = 1e-10
+    }
+
     override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
         Repository(this)
     }
@@ -706,7 +710,38 @@ class Capacitor : NortonSystem(), ReadoutElectricalComponent<Capacitor, Capacito
      */
     var charge: Double = 0.0
 
+    /**
+     * Reconciles [charge] and [lastPotential] so we don't get phantom energy input when either is incorrect.
+     *
+     * Simply put, the capacitor enforces `V = Q / C`.
+     * If this state is not consistent, we will get some feedback.
+     * */
+    private fun sanitizeState() {
+        /**
+         * Potential across the device expected from the current charge and capacitance:
+         * */
+        val expectedPotential = charge / capacitance
+
+        /**
+         * Error (P.S. at this point, `potential = lastPotential`)
+         * */
+        val error = expectedPotential - lastPotential
+
+        if (abs(error) <= CONSISTENCY_TOLERANCE) {
+            lastDv = error
+            lastPotential = expectedPotential
+            return
+        }
+
+        // Reconcile by preserving charge:
+        val v0 = lastPotential
+        lastPotential = expectedPotential
+        lastDv = lastPotential - v0
+    }
+
     override fun prepareStep() {
+        sanitizeState()
+
         nortonCurrent = charge / simulation.dt
         trickUsed = false
     }
@@ -792,170 +827,6 @@ class Capacitor : NortonSystem(), ReadoutElectricalComponent<Capacitor, Capacito
      * Gets the total energy possible to withdraw with [withdrawEnergyTrick].
      * */
     val virtualEnergy get() = this@Capacitor.internalEnergy + lostEnergy
-}
-
-/**
- * A capacitor implemented as a Norton system.
- * Uses *Trapezoidal* integration (relatively stable, almost energy-conserving). It's more accurate than the [Capacitor], but less stable.
- * This capacitor doesn't damp high-frequency oscillations. It's stable, but can cause some ringing in the system.
- * A simple test case: Create a [PotentialSource] with `10V` connected to a [CapacitorTrapezoidal], and run it for two steps.
- * In the first step, the capacitor will fully charge, but the source will have dispatched more energy than was stored.
- * Next step, the capacitor will create a back-current that will create a negative power on the source, which when accounted for, will set the energy balance.
- * */
-class CapacitorTrapezoidal : NortonSystem(), ReadoutElectricalComponent<CapacitorTrapezoidal, CapacitorTrapezoidal.Repository> {
-    override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
-        Repository(this)
-    }
-
-    class Repository(val capacitor: CapacitorTrapezoidal) : ReadoutRepository {
-        var capacitance = Quantity(0.0, FARAD)
-            private set
-
-        var charge = Quantity(0.0, COULOMB)
-            private set
-
-        var internalEnergy = Quantity(0.0, JOULE)
-            private set
-
-        var potential = Quantity(0.0, VOLT)
-            private set
-
-        var current = Quantity(0.0, AMPERE)
-            private set
-
-        override fun loadValues() {
-            capacitance = Quantity(capacitor.capacitance)
-            charge = Quantity(capacitor.charge)
-            internalEnergy = Quantity(capacitor.internalEnergy)
-            potential = Quantity(capacitor.potential)
-            current = Quantity(capacitor.current)
-        }
-    }
-
-    override fun getNortonResistance(value: Double) = simulation.dt / (2.0 * value)
-
-    /**
-     * The capacitance of the capacitor.
-     * Changing this is expensive!
-     * */
-    var capacitance: Double
-        get() = componentValue
-        set(value) { componentValue = value }
-
-    /**
-     * Potential across the device from the last timestep.
-     * */
-    var lastPotential: Double = 0.0
-
-    /**
-     * The last capacitor current (for trapezoidal).
-     * */
-    var lastCapacitorCurrent: Double = 0.0
-
-    /**
-     * The last potential difference, calculated in [finishStep].
-     * */
-    var lastDv = 0.0
-
-    /**
-     * The amount of charge this capacitor has accumulated.
-     */
-    var charge: Double = 0.0
-
-    override fun prepareStep() {
-        nortonCurrent = nortonConductance * lastPotential + lastCapacitorCurrent
-    }
-
-    override fun finishStep() {
-        val potential = potential
-
-        val dv = potential - lastPotential
-        val dq = capacitance * dv
-
-        val previousEnergy = 0.5 * (charge * charge) / capacitance
-
-        charge += dq
-
-        lastPotential = potential
-        lastCapacitorCurrent = capacitance * dv / simulation.dt
-        lastDv = dv
-
-        // Approximates work done by the external circuit. This allows us to calculate an energy error:
-        lostEnergy = potential * current * simulation.dt - (internalEnergy - previousEnergy)
-    }
-
-    /**
-     * Removes energy from the capacitor.
-     * @param requestedEnergy The upper bound on the energy to withdraw.
-     * @return The actual energy that was removed.
-     */
-    fun withdrawEnergy(requestedEnergy: Double): Double {
-        require(requestedEnergy >= 0.0 && !requestedEnergy.isNaN() && !requestedEnergy.isInfinite()) {
-            "Invalid requested energy $requestedEnergy!"
-        }
-
-        if (requestedEnergy <= 0.0 || capacitance <= 0.0) {
-            return 0.0
-        }
-
-        val internalEnergy = internalEnergy
-        val energyToRemove = min(requestedEnergy, internalEnergy)
-        val newEnergy = internalEnergy - energyToRemove
-        val newCharge = sign(charge) * sqrt(2.0 * capacitance * newEnergy)
-
-        val dq = newCharge - charge
-        charge = newCharge
-
-        val temp = lastPotential
-        lastPotential = newCharge / capacitance
-        lastDv = lastPotential - temp
-
-        lastCapacitorCurrent = -dq / simulation.dt
-
-        return energyToRemove
-    }
-
-    /**
-     * Removes energy from the capacitor, but first checks if the numeric losses of the model satisfy this request.
-     * If not, it fills the rest of the request with [withdrawEnergy].
-     * This mutates [lostEnergy]!
-     *
-     * Over time, using this instead of [withdrawEnergy] results in a more accurate energy balance.
-     * Keep in mind that, if the [lostEnergy] is not wholly consumed this step, it will be gone next step.
-     * */
-    fun withdrawEnergyTrick(requestedEnergy: Double): Double {
-        val loss = lostEnergy
-
-        if(loss <= 0.0) {
-            // Pushback from the integration.
-            return withdrawEnergy(requestedEnergy)
-        }
-
-        if(requestedEnergy <= loss) {
-            lostEnergy -= requestedEnergy
-            return requestedEnergy
-        }
-
-        lostEnergy = 0.0
-        return loss + withdrawEnergy(requestedEnergy - loss)
-    }
-
-    /**
-     * Gets the energy stored based on the current [charge].
-     * */
-    val internalEnergy get() = 0.5 * charge * charge / capacitance
-
-    /**
-     * Energy lost in the numerical model this step.
-     * **Can be negative if the model rung!**
-     * */
-    var lostEnergy = 0.0
-        private set
-
-    /**
-     * Gets the total energy possible to withdraw with [withdrawEnergyTrick].
-     * */
-    val virtualEnergy get() = internalEnergy + lostEnergy.coerceAtLeast(0.0)
 }
 
 /**

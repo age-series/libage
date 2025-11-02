@@ -50,6 +50,7 @@ class ElectricalCircuitCompiler(val subSolverData: ElectricalCircuitForestBuilde
         /**
          * Build nodes for floating pins as well.
          * This is necessary, unfortunately. I can explain more if you ask me and I remember why.
+         * The nodes that are created for unconnected nodes are called **Synthetic Nodes**.
          * */
         subSolverData.nodes.forEach { node ->
             node.allPins.forEach { pin ->
