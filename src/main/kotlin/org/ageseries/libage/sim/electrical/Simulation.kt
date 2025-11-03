@@ -1040,17 +1040,16 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
 
                 lastMaxDelta = deltaMax
 
-                val maxPotentialViolation = simulation.powerSources
-                    .maxOf { abs(it.potential) - it.maxPotential }
-                    .coerceAtLeast(0.0)
-
                 /**
                  * Convergence check.
                  * The residual check is solid, but the delta check is a bit suspicious.
                  * It might be worth it to build a counter that measures how many consecutive steps resulted in the delta being low,
                  * and only then apply the criterion.
                  * */
-                if ((maxNewResidual <= simulation.powerSourceResidualTolerance || deltaMax <= simulation.powerSourceDeltaTolerance) && maxPotentialViolation < simulation.powerSourcePotentialTolerance) {
+                // P.S. the potential constraint is incorporated into the residual.
+                // Checking the potential violations here prevents it from exiting the loop when e.g. you have a negative potential a source can never overcome.
+                // The residual will be driven to 0 but the potential constraint will always be violated (which will generate an inverse power on the source, which we can address with a diode)
+                if (maxNewResidual <= simulation.powerSourceResidualTolerance || deltaMax <= simulation.powerSourceDeltaTolerance) {
                     // Accept xNew and copy into devices:
                     for (i in 0 until size) {
                         simulation.powerSources[i].setCurrentFromSolver(xNew[i])
@@ -1301,11 +1300,6 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
      * Exit if the largest current delta is less than this tolerance for the power devices.
      * */
     var powerSourceDeltaTolerance = 1e-6
-
-    /**
-     * Tolerance for the potential constraint.
-     * */
-    var powerSourcePotentialTolerance = 1e-4
 
     /**
      * The number of iterations the nonlinear solver needed in the last step.

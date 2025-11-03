@@ -7,6 +7,29 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.random.Random
 
+fun main() {
+    val b = ElectricalCircuitForestBuilder()
+
+    val pow = PowerSource()
+    val src = PotentialSource()
+
+    b.add(pow, src)
+    b.join(pow.positive, src.positive)
+    b.join(pow.negative, src.negative)
+
+    pow.maxPotential = 10.0
+    pow.maxPower = 1.0
+    pow.targetPower = 1.0
+
+    src.potential = -100.0
+
+    val c = b.build(1.0 / 100.0, true).solvers.first()
+    while (true) {
+        c.step()
+        println()
+    }
+}
+
 internal class ElectricalTests {
     private fun ElectricalCircuitForestBuilder.unique(optimization: Boolean = true) : ElectricalSimulation {
         val subSolvers = this.build(1.0 / 100.0, optimization).solvers
