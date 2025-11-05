@@ -648,6 +648,8 @@ class Inductor : NortonSystem(), ReadoutElectricalComponent<Inductor, Inductor.R
      * Gets the energy stored in the electromagnetic field.
      * */
     val energy: Double get() = 0.5 * inductance * (current * current)
+
+    val power get() = potential * current
 }
 
 /**
@@ -830,6 +832,8 @@ class Capacitor : NortonSystem(), ReadoutElectricalComponent<Capacitor, Capacito
      * Gets the total energy possible to withdraw with [withdrawEnergyTrick].
      * */
     val virtualEnergy get() = this@Capacitor.internalEnergy + lostEnergy
+
+    val power get() = potential * current
 }
 
 /**

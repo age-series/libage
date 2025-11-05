@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.fail
+import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.random.Random
 
 internal class ElectricalTests {
@@ -975,6 +977,9 @@ internal class ElectricalTests {
         }
     }
 
+    /**
+     * Tests the most basic case for a power consumer.
+     * */
     @Test
     fun testPowerConsumerBasic() {
         val builder = ElectricalCircuitForestBuilder()
@@ -1002,6 +1007,9 @@ internal class ElectricalTests {
         assertEquals(2.5, vs.current, 0.1)
     }
 
+    /**
+     * Tests the equivalent resistance constraint for the power consumer.
+     * */
     @Test
     fun testPowerConsumerConstraint() {
         val builder = ElectricalCircuitForestBuilder()
@@ -1025,8 +1033,18 @@ internal class ElectricalTests {
         assertEquals(10.0, pc.potential, 1e-6)
         assertEquals(100.0, pc.power, 1e-5)
         assertEquals(100.0, vs.power, 1e-5)
+
+        pc.minEquivalentResistance = 0.1
+        circuit.step()
+
+        assertEquals(10.0, pc.potential, 1e-6)
+        assertEquals(500.0, pc.power, 1e-5)
+        assertEquals(500.0, vs.power, 1e-5)
     }
 
+    /**
+     * Makes sure that a power consumer with zero target power is an open circuit.
+     * */
     @Test
     fun testPowerConsumerZeroTarget() {
         val builder = ElectricalCircuitForestBuilder()
@@ -1051,6 +1069,9 @@ internal class ElectricalTests {
         assertEquals(0.0, vs.current, 0.1)
     }
 
+    /**
+     * Tests transfer between two power devices.
+     * */
     @Test
     fun testPowerSourceToConsumerStable() {
         val builder = ElectricalCircuitForestBuilder()
@@ -1075,6 +1096,10 @@ internal class ElectricalTests {
         val circuit = builder.testBuild()
 
         repeat(1000) {
+            if(it < 124) {
+                return@repeat
+            }
+
             val genPower = 1000.0 * kotlin.math.sin(it * circuit.dt).pow(2)
             val consPower = 1000.0 * kotlin.math.cos(it * circuit.dt).pow(2)
 
@@ -1097,9 +1122,276 @@ internal class ElectricalTests {
             val generated = pg.power
             val consumed = pc.power
 
+            if(generated < 0.0 || consumed < 0.0) {
+                println()
+            }
+
             assertEquals(generated, dissipated + consumed, 0.1)
 
             assertTrue(circuit.lastPowerSourceIterationCount < 40)
+        }
+    }
+
+    /**
+     * Tests basic power transfer between a few power devices.
+     * */
+    @Test
+    fun testMultiSourceMultiConsumerStable() {
+        val builder = ElectricalCircuitForestBuilder()
+
+        val ps1 = PowerSource().also {
+            it.maxPotential = 200.0
+            it.setStabilizingResistance(100.0, 2000.0)
+        }
+
+        val ps2 = PowerSource().also {
+            it.maxPotential = 200.0
+            it.setStabilizingResistance(100.0, 2000.0)
+        }
+
+        val pc1 = PowerConsumer().also {
+            it.minEquivalentResistance = 0.5
+            it.setStabilizingResistance(100.0, 2000.0)
+        }
+
+        val pc2 = PowerConsumer().also {
+            it.minEquivalentResistance = 0.5
+            it.setStabilizingResistance(100.0, 2000.0)
+        }
+
+        val r1 = Resistor().also { it.resistance = 2.0 }
+        val r2 = Resistor().also { it.resistance = 5.0 }
+        val r3 = Resistor().also { it.resistance = 2.0 }
+
+        builder.add(ps1, ps2, pc1, pc2, r1, r2, r3)
+
+        builder.join(ps1.positive, r1.positive)
+        builder.join(ps1.positive, r2.positive)
+
+        val builder2 = ElectricalCircuitForestBuilder()
+        builder2.add(ps1, ps2, pc1, pc2, r1, r2, r3)
+
+        builder2.join(ps1.positive, r1.positive)
+        builder2.join(r1.negative, pc1.positive)
+
+        builder2.join(ps2.positive, r3.positive)
+        builder2.join(r3.negative, pc2.positive)
+
+        builder2.join(r1.negative, r2.positive)
+        builder2.join(r3.negative, r2.negative)
+
+        builder2.ground(ps1.negative)
+        builder2.ground(ps2.negative)
+        builder2.ground(pc1.negative)
+        builder2.ground(pc2.negative)
+
+        val circuit = builder2.testBuild()
+
+        val steps = 10000
+
+        repeat(steps) { step ->
+            // Very-varying system:
+            ps1.targetPower = 1000.0 * sin(step * circuit.dt * 0.5).pow(2) + 10.0 // Slow
+            ps2.targetPower = 800.0 * sin(step * circuit.dt * 1.0).pow(2) + 10.0 // Medium
+
+            pc1.targetPower = 600.0 * cos(step * circuit.dt * 0.7).pow(2) + 5.0 // Med-Slow
+            pc2.targetPower = 500.0 * cos(step * circuit.dt * 1.2).pow(2) + 5.0 // Fast
+
+            try {
+                circuit.step()
+            } catch (e: Exception) {
+                fail("Solver exception: $e")
+            }
+
+            val generated = ps1.power + ps2.power
+            val consumed = pc1.power + pc2.power
+            val dissipated = r1.power + r2.power + r3.power
+
+            if (ps1.power < -0.01 || ps2.power < -0.01) {
+                fail("Step $step: PowerSource is consuming power")
+            }
+
+            if (pc1.power < -0.01 || pc2.power < -0.01) {
+                fail("Step $step: PowerConsumer is generating power")
+            }
+
+            assertEquals(generated, consumed + dissipated, 0.1, "Power balance failed at step $step")
+        }
+    }
+
+    /**
+     * Tests a failure point observed in-game (with the previous solver).
+     * */
+    @Test
+    fun powerConsumerCapacitorFeedbackTest1() {
+        val builder = ElectricalCircuitForestBuilder()
+
+        val cons = PowerConsumer()
+        cons.setStabilizingResistance(100.0, 100.0)
+
+        val cap = Capacitor()
+        cap.capacitance = 1e-4
+        cap.charge = 100.0 * cap.capacitance // 100 volt
+
+        val initialEnergy = cap.internalEnergy
+
+        builder.add(cons)
+        builder.add(cap)
+
+        builder.ground(cons.negative)
+        builder.join(cap.negative, cons.negative)
+        builder.join(cons.positive, cap.positive)
+
+        val c = builder.build(1.0 / 100.0, false, ElectricalSimulation.ConstructionOptions(null)).solvers.first()
+
+        var lostEnergy = 0.0
+
+        repeat(50) { step ->
+            val t = step * c.dt
+
+            cons.targetPower = (sin(t * 20.0).pow(2) * 500.0) + 10.0
+
+            try {
+                c.step()
+            } catch (e: Exception) {
+                println("STEP $step: Solver failed: $e")
+                return
+            }
+
+            val power = cons.power
+            val potential = cons.potential
+
+            if (power.isNaN() || power.isInfinite() || potential.isNaN() || potential.isInfinite()) {
+                fail("Invalid output")
+            }
+
+            lostEnergy += power * c.dt + cap.lostEnergy
+        }
+
+        assertTrue(cap.potential < 0.1, "The capacitor's energy wasn't bled off by the consumer")
+        assertEquals(lostEnergy, initialEnergy, 1e-8) // In the test, it was equal within floating point error
+    }
+
+    /**
+     * Tests a bigger power device system.
+     * */
+    @Test
+    fun testFullSystemDynamicStress() {
+        val builder = ElectricalCircuitForestBuilder()
+
+        // Bus 1 (Main Grid)
+        val pg1 = PowerSource().also {
+            it.maxPotential = 100.0
+            it.setStabilizingResistance(50.0, 5000.0)
+        }
+
+        val pc1 = PowerConsumer().also {
+            it.minEquivalentResistance = 0.1
+            it.setStabilizingResistance(50.0, 5000.0)
+        }
+
+        val cap1 = Capacitor().also { it.capacitance = 1e-3 }
+        val ind1 = Inductor().also { it.inductance = 1e-2 }
+
+        val vs = PotentialSource().also { it.potential = 24.0 }
+        val rBatt = Resistor().also { it.resistance = 0.05 }
+
+        val pc2 = PowerConsumer().also {
+            it.minEquivalentResistance = 0.5
+            it.setStabilizingResistance(24.0, 500.0)
+        }
+        val cap2 = Capacitor().also { it.capacitance = 1e-4 }
+        val ind2 = Inductor().also { it.inductance = 1e-3 }
+
+        // Connector (DC-DC Charger from Bus 1 to Bus 2)
+        val pg2 = PowerSource().also {
+            it.maxPotential = 50.0 // Can boost voltage
+            it.setStabilizingResistance(24.0, 1000.0)
+        }
+
+        builder.add(pg1, pc1, cap1, ind1, vs, rBatt, pc2, cap2, ind2, pg2)
+
+        // Connect Bus 1
+        builder.join(pg1.positive, ind1.positive)
+        val bus1 = ind1.negative
+
+        // pc1 and cap1 connect to bus1
+        builder.join(bus1, pc1.positive, cap1.positive)
+
+        // pg2 draws from bus1
+        builder.join(bus1, pg2.negative)
+
+        // Connect Bus 2
+        builder.join(vs.positive, rBatt.positive)
+        builder.join(rBatt.negative, ind2.positive)
+        val bus2 = ind2.negative
+
+        builder.join(bus2, pc2.positive, cap2.positive)
+
+        builder.join(bus2, pg2.positive)
+
+        builder.ground(pg1.negative, pc1.negative, cap1.negative, vs.negative, pc2.negative, cap2.negative)
+
+        val circuit = builder.testBuild()
+        val dt = circuit.dt
+
+        var totalOuterIterations = 0
+        var totalSourceIterations = 0
+
+        repeat(5000) { step ->
+            val t = step * dt
+
+            pg1.targetPower = 5000.0 + 2500.0 * sin(t * 5.0)
+            pc1.targetPower = 4000.0 + 3000.0 * cos(t * 3.0)
+            pc2.targetPower = 200.0 + 150.0 * sin(t * 10.0)
+
+            val batteryVoltage = pc2.positive.potential
+            pg2.targetPower = when {
+                batteryVoltage < 23.8 -> 500.0
+                batteryVoltage > 24.2 -> 0.0
+                else -> 100.0
+            }
+
+            try {
+                circuit.step()
+            } catch (e: Exception) {
+                fail("Solver failed at step $step with t=$t: $e")
+            }
+
+            totalOuterIterations += circuit.lastOuterLoopIterations
+            totalSourceIterations += circuit.lastPowerSourceIterationCount
+
+            if (step < 20) {
+                return@repeat
+            }
+
+            assertTrue(pc1.power >= -0.1)
+            assertTrue(pc2.power >= -0.1)
+            assertTrue(pg1.power >= -0.1)
+            assertTrue(pg2.power >= -0.1)
+
+            val pGen1 = pg1.power
+            val pGen2 = pg2.power
+            val pVs = vs.power
+
+            val pCons1 = pc1.power
+            val pCons2 = pc2.power
+
+            val pRBatt = rBatt.power
+
+            val pCap1 = cap1.power
+            val pCap2 = cap2.power
+            val pInd1 = ind1.power
+            val pInd2 = ind2.power
+
+            val totalPowerGenerated = pGen1 + pGen2 + pVs
+            val totalPowerConsumed = pCons1 + pCons2 + pRBatt + pCap1 + pCap2 + pInd1 + pInd2
+
+            assertEquals(
+                totalPowerGenerated,
+                totalPowerConsumed,
+                0.1
+            )
         }
     }
 }

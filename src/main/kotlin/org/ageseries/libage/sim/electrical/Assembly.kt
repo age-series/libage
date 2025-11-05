@@ -423,9 +423,30 @@ interface ElectricalConnectivityMap {
     fun join(a: ElectricalPin, b: ElectricalPin)
 
     /**
+     * Connects all the electrical pins.
+     * It is illegal to join the pins of the same component!
+     * */
+    fun join(vararg pins: ElectricalPin) {
+        val representative = pins[0]
+
+        for (i in 1 until pins.size) {
+            join(representative, pins[i])
+        }
+    }
+
+    /**
      * Grounds the specified pin.
      * */
     fun ground(pin: ElectricalPin)
+
+    /**
+     * Grounds the specified pins.
+     * */
+    fun ground(vararg pins: ElectricalPin) {
+        pins.forEach {
+            ground(it)
+        }
+    }
 }
 
 /**

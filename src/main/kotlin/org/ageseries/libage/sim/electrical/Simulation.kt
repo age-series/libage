@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Representation for an electrical pin. This allows the downstream code to deal with localized pins of components, instead of nodes.
@@ -630,42 +631,73 @@ class ElectricalSimulation(
     }
 
     /**
+     * Nonlinear Gauss-Seidel
      * Stable(r) approximate solutions for the power consumers, which may converge over multiple outer-iteration steps.
      * */
     class PowerConsumerSolver(val simulation: ElectricalSimulation) {
-        /**
-         * Simplest Norton current predictor (no linear solves).
-         * */
-        inline fun getPredictorCurrentForDevice(device: PowerConsumer) : Double {
-            val previousPotential = device.potential
+        @Suppress("UnnecessaryVariable")
+        inline fun decompositionPredictor(device: PowerConsumer) : Double {
+            val (vTh, rTh) = simulation.computeTheveninForNortonSystem(device)
             val rN = device.characteristicResistance
             val targetPower = device.targetPower
-            val minEquivalentResistance = device.minEquivalentResistance
+            val minR = device.minEquivalentResistance
 
-            return if (targetPower.approxEq(0.0) || abs(previousPotential) < 1e-3) {
-                previousPotential / rN
-            } else {
-                val pLimit = (previousPotential * previousPotential) / minEquivalentResistance
-                val limitedPower = min(targetPower, pLimit)
-                (previousPotential / rN) - (limitedPower / previousPotential)
+            if (vTh <= 0.0) {
+                val vOp = vTh
+                val iLoad = 0.0
+                return (vOp / rN) - iLoad
             }
+
+            if (rTh.isInfinite()) {
+                val vOp = vTh
+                val iLoad = 0.0
+                return (vOp / rN) - iLoad
+            }
+
+            val pLimited: Double
+            val vOp: Double
+            val iLoad: Double
+
+            if (rTh.approxEq(0.0)) {
+                vOp = vTh
+                val pLimitMinR = (vOp * vOp) / minR
+                pLimited = min(targetPower, pLimitMinR)
+
+                iLoad = if (vOp.approxEq(0.0)) 0.0 else pLimited / vOp
+
+            } else {
+                val maxPowerTransfer = (vTh * vTh) / (4.0 * rTh)
+                val pLimitedTemp = min(targetPower, maxPowerTransfer)
+                val delta = (vTh * vTh) - 4.0 * pLimitedTemp * rTh
+
+                vOp = if (delta < 0.0) {
+                    vTh / 2.0
+                } else {
+                    (vTh + sqrt(delta)) / 2.0
+                }
+
+                val pLimitMinR = (vOp * vOp) / minR
+                pLimited = min(pLimitedTemp, pLimitMinR)
+
+                iLoad = if (vOp.approxEq(0.0)) 0.0 else pLimited / vOp
+            }
+
+            val finalILoad = if (iLoad.isNaN() || iLoad.isInfinite()) 0.0 else iLoad
+
+            return (vOp / rN) - finalILoad
         }
 
         /**
-         * Refines the power consumer currents, with a single relaxation step.
+         * Refines the power consumer currents, with a single displacement step.
          * */
-        fun refine(relaxationFactor: Double = 1.0) : Double {
-            val overRelaxation = simulation.powerConsumerOverRelaxation * relaxationFactor
-
+        fun grissessSeidelStep() : Double {
             var maxDelta = 0.0
 
             for (i in 0 until simulation.powerConsumers.size) {
                 val device = simulation.powerConsumers[i]
-                val predictor = getPredictorCurrentForDevice(device)
-                val previous = device.nortonCurrent
-                val nortonCurrent = (1.0 - overRelaxation) * previous + overRelaxation * predictor
-                val delta = abs(nortonCurrent - device.nortonCurrent)
-                device.nortonCurrent = nortonCurrent
+                val predictor = decompositionPredictor(device)
+                val delta = abs(predictor - device.nortonCurrent)
+                device.nortonCurrent = predictor
 
                 if(delta > maxDelta) {
                     maxDelta = delta
@@ -675,25 +707,6 @@ class ElectricalSimulation(
             simulation.solveWithNewKnowns()
 
             return maxDelta
-        }
-
-        /**
-         * Refines the power consumer over multiple steps.
-         * Only called when sources don't exist.
-         * */
-        fun approximateSolve() {
-            var lastDelta = refine()
-            var relaxationFactor = 1.0
-
-            repeat(simulation.powerConsumerIndividualLoops) {
-                val newDelta = refine(relaxationFactor)
-
-                if(newDelta > lastDelta) {
-                    relaxationFactor *= simulation.powerConsumerDeltaDamping
-                }
-
-                lastDelta = newDelta
-            }
         }
     }
 
@@ -1090,7 +1103,7 @@ class ElectricalSimulation(
             /**
              * Set in the loop to mark that the Jacobian needs to be recomputed (done at the start of the loop).
              * */
-            var recomputeJacobian = true // True so it computes the initial Jacobian.
+            var recomputeJacobian = true
 
             /**
              * The number of times the jacobian has been re-used.
@@ -1490,22 +1503,25 @@ class ElectricalSimulation(
     //#region Power Device Solver Options
 
     /**
-     * Coupling solver iteration count.
+     * Coupling solver iteration count (in normal mode).
      * */
-    var powerDeviceOuterLoop = 4
+    var powerDeviceMaxOuterLoopIterations = 10
 
     /**
-     * Number of iterations for the power consumers, when power sources don't exist.
+     * Coupling solver iteration count when some power consumers are generating power.
      * */
-    var powerConsumerIndividualLoops = 10
-
-    var powerConsumerDeltaDamping = 0.5
+    var powerDeviceMaxOuterLoopIterationsConsumerViolation = 100
 
     /**
-     * The successive over-relaxation factor for the power consumer solver.
-     * This factor decays in the loop when the solver starts diverging.
+     * If two successive solves yield a maximum delta (for both the consumers and the sources) less than [powerDeviceOuterLoopTolerance], the outer loop exits early.
      * */
-    var powerConsumerOverRelaxation = 0.5
+    var powerDeviceOuterLoopTolerance = 1e-5
+
+    /**
+     * The last number of iterations taken by the solver.
+     * */
+    var lastOuterLoopIterations = 0
+        private set
 
     /**
      * The approximate time spent by the power consumer solver last step.
@@ -1534,7 +1550,7 @@ class ElectricalSimulation(
     /**
      * Exit if the largest current delta is less than this tolerance for the power sources.
      * */
-    var powerSourceDeltaTolerance = 1e-5
+    var powerSourceDeltaTolerance = 1e-4
 
     /**
      * The number of iterations the nonlinear solver needed in the last step.
@@ -1555,11 +1571,6 @@ class ElectricalSimulation(
      * The (absolute) max residual from the nonlinear solver in the last step (not the norm of the residual vector).
      * */
     val lastPowerSourceMaxResidual get() = sourceSystem?.lastMaxResidual ?: 0.0
-
-    /**
-     * The (absolute) max change in Norton current applied by the nonlinear solver in the last step (not the norm of the delta vector).
-     * */
-    val lastPowerSourceMaxDelta get() = sourceSystem?.lastMaxDelta ?: 0.0
 
     /**
      * The approximate time spent by the power source solver last step.
@@ -1583,12 +1594,15 @@ class ElectricalSimulation(
         var powerSourceSystemEvaluations = 0
 
         /**
-         * Solves the Power Consumers and Power Sources individually:
+         * Executes one step of the relaxation solver.
          * */
-        fun powerDeviceOuterIteration() {
+        fun powerDeviceOuterIteration() : Double {
+            var consumerDelta = 0.0
+            var sourceDelta = 0.0
+
             if(powerConsumers.isNotEmpty()) {
                 powerConsumerTime += measureDuration {
-                    consumerSolver!!.refine()
+                    consumerDelta = consumerSolver!!.grissessSeidelStep()
                 }
             }
 
@@ -1597,39 +1611,45 @@ class ElectricalSimulation(
                     val system = sourceSystem!!
                     powerSourceIterations += system.solve()
                     powerSourceSystemEvaluations += system.lastSystemEvaluations
+                    sourceDelta = system.lastMaxDelta
                 }
             }
+
+            return max(consumerDelta, sourceDelta)
         }
 
-        if(powerConsumers.isNotEmpty() && powerSources.isNotEmpty()) {
-            /**
-             * Block-solve the consumers and sources.
-             * The blocks are the power sources, and the power consumers.
-             * */
-            repeat(powerDeviceOuterLoop) {
-                powerDeviceOuterIteration()
+        var convergenceFlag = false
+        var iterations = 0
+
+        while (true) {
+            iterations++
+
+            val delta = powerDeviceOuterIteration()
+
+            if(delta < powerDeviceOuterLoopTolerance) {
+                if(convergenceFlag) {
+                    break
+                }
+
+                convergenceFlag = true
+            }
+            else {
+                convergenceFlag = false
+            }
+
+            val maxIterations = if(powerConsumers.any { it.power < 1e-3}) {
+                powerDeviceMaxOuterLoopIterationsConsumerViolation
+            }
+            else {
+                powerDeviceMaxOuterLoopIterations
+            }
+
+            if(iterations >= maxIterations) {
+                break
             }
         }
-        else {
-            /**
-             * Only one type of device exists or none exist.
-             * */
-            powerDeviceOuterIteration()
 
-            if(powerConsumers.isNotEmpty()) {
-                /**
-                 * Only consumers exist:
-                 * */
-                consumerSolver!!.approximateSolve()
-            }
-            else if(powerSources.isNotEmpty()) {
-                /**
-                 * Only sources exist. Do a single, exact step:
-                 * */
-                sourceSystem!!.solve()
-            }
-        }
-
+        lastOuterLoopIterations = iterations
         lastPowerConsumerTime = powerConsumerTime
         lastPowerSourceTime = powerSourceTime
         lastPowerSourceIterationCount = powerSourceIterations
@@ -1637,7 +1657,7 @@ class ElectricalSimulation(
     }
 
     /**
-     * Steps the simulation.
+     * Steps the simulation forward in time.
      * Can throw:
      *  - [SingularLinearSystemException] when the linear system factorization failed.
      *  - [InvalidLinearResultsException] when the result currents or potentials are NaN or Infinity.
@@ -1749,11 +1769,9 @@ class ElectricalSimulation(
 
         val Rth = s1 - s2
         val V = nortonSystem.potential
-        val IN = nortonSystem.nortonCurrent
+        val Vth = V + Rth * nortonSystem.current
 
-        val Vth = V + Rth * IN
-
-        val RthSafe = if (Rth <= 0.0 || Rth.isNaN() || Rth.isInfinite()) Double.POSITIVE_INFINITY else Rth
+        val RthSafe = if (Rth < 0.0 || Rth.isNaN()) 0.0 else Rth
 
         return Thevenin(Vth, RthSafe)
     }
