@@ -469,13 +469,16 @@ class ResistorSystem(graph: ElectricalCircuitCompiler.LineOptimizer.ProtoLineGra
      * Stamps the [seriesResistance].
      * */
     override fun stamp() {
+        if(dirty) {
+            seriesResistance = resistors.sumOf { it.resistance }
+            dirty = false
+        }
+
         simulation.system.stampResistance(
             positive.node,
             negative.node,
             seriesResistance
         )
-
-        dirty = false
     }
 
     /**
