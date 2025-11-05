@@ -1,3 +1,5 @@
+@file:Suppress("NOTHING_TO_INLINE")
+
 package org.ageseries.libage.mathematics
 
 import org.jetbrains.annotations.ApiStatus.Internal

@@ -6,6 +6,7 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.electrical.ElectricalComponent.Companion.ID_GENERATOR
 import org.ageseries.libage.sim.electrical.ElectricalNode.Companion.GROUND_ID
 import org.ageseries.libage.sim.electrical.ElectricalNode.Companion.VIRTUAL_ID
+import org.ageseries.libage.sim.electrical.ElectricalPin.Companion.ID_GENERATOR
 import org.ageseries.libage.utils.measureDuration
 import org.ejml.data.DMatrixRMaj
 import org.ejml.data.DMatrixSparseCSC
@@ -19,7 +20,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sign
 
 /**
  * Representation for an electrical pin. This allows the downstream code to deal with localized pins of components, instead of nodes.
@@ -307,7 +307,7 @@ abstract class NortonSystem : Port() {
      * Changes the current injected by the Norton system.
      * */
     var nortonCurrent: Double = 0.0
-        protected set(value) {
+        internal set(value) {
             if(value.isNaN() || value.isInfinite()) {
                 error("Invalid Norton current $value")
             }
@@ -355,23 +355,45 @@ abstract class NortonSystem : Port() {
 /**
  * Electrical circuit simulation with an immutable component set and an immutable connection set.
  *
- * Inductors and capacitors are approximated by a Norton systems.
- * Other special components (the power sources, for example) are also implemented as Norton systems.
+ * Inductors and Capacitors are approximated by a Norton system, with Backward Euler integration.
+ * That was a purposeful decision because we don't simulate AC or circuits, so the extra stability and damping are good.
+ * Other special components (the power devices) are also implemented as Norton systems with constant conductance.
+ * This is done because it's the cheapest way to model a dynamic system, which plays well into our performance philosophy.
  *
+ * ## [PowerConsumer]:
+ * The [PowerConsumer]s are nonlinear components that do not fit into the usual MNA components.
+ * They are coupled electrically, so they must be solved simultaneously. Their constraints are both in target power, but also in effective dissipation.
+ * The load is modeled with a Norton system with a constant conductance and variable current (that opposes the circuit, to simulate a load).
+ * The unknown Norton currents are found using successive over-relaxation with two algorithms that can be chosen, which starts at a guess for the currents and refines it in a stable manner over time.
+ * The exact solution isn't found in non-trivial circuits, but the solution gets better over time.
+ * The solver is cheap, considerably cheaper and more stable than the [PowerSource] solver. It works because we don't need fine control over the input of energy into our buffer.
+ * We can accept small overshoots, as long as the solution is stable.
+ *
+ * ## [PowerSource]:
  * The [PowerSource]s are nonlinear components that do not fit into the usual MNA components.
  * They are coupled electrically, so they must be solved simultaneously. They are also well-constrained by the potential constraint.
- * This creates a nonlinear system of equations with a unique solution that must be solved. This is done after [ElectricalComponent.prepareStep], and after the MNA matrix is factored.
- * The system is solved using a *Quasi-Newton method (Broyden's Method)*, with a line search. The system size is `NxN`, where `N` is the number of sources. So it can get expensive with many [PowerSource]s.
+ * This creates a nonlinear system of equations with a unique solution that must be solved. This is done after the consumers are solved.
+ * The system is solved using a *Quasi-Newton method (Broyden's Method)*, with a line search.
+ * The system size is `NxN`, where `N` is the number of sources. So it can get expensive with many [PowerSource]s.
  * For a step, an initial Jacobian is computed analytically (in most cases), and then updated based on further residual evaluations. The system is solved with a dense LU decomposition.
  * The result is the unknown Norton currents to apply to the sources so their potential constraint is satisfied and the target power is reached, if possible.
  * The [PowerSource]s are intended as precise energy transfer devices (the upper bound on the energy released in a step is controlled precisely).
- * This is useful for implementing advanced devices such as the DC-DC converter.
+ * This is useful for implementing advanced devices such as the DC-DC converter's output side, which draws from a small energy buffer and responds abruptly to demand changes.
+ *
+ * ## [PowerConsumer]-[PowerSource] coupling:
+ * The two devices are solved separately. In simplest terms, one's operating point is held constant while the other one's operating point is found.
+ * First, the [PowerConsumer]s are solved. Then, the [PowerSource]s are solved. The circuit will reach an equilibrium state over multiple timesteps (if applicable).
  *
  * @param components Real components (that will be included in the system). Components that were optimized away don't show up here.
  * @param pinForest The pin forest. Used to construct the nodes.
  * */
 @Suppress("NOTHING_TO_INLINE")
-class ElectricalSimulation(val dt: Double, val components: Array<ElectricalComponent>, pinForest: Map<ElectricalCircuitCompiler.PinDisjointSet, Set<ElectricalPin>>) {
+class ElectricalSimulation(
+    val dt: Double,
+    val components: Array<ElectricalComponent>,
+    val constructionOptions: ConstructionOptions,
+    pinForest: Map<ElectricalCircuitCompiler.PinDisjointSet, Set<ElectricalPin>>
+) {
     companion object {
         // Values chosen by feeling (they usually don't disrupt the solvers):
         const val MIN_RESISTANCE = 1e-6
@@ -414,6 +436,11 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
          * The unknowns vector. Implemented as a dense matrix.
          * */
         val unknown = DMatrixRMaj(matrixSize, 1)
+
+        /**
+         * The sparse solver for the system.
+         * */
+        val solver = LinearSolverFactory_DSCC.lu(FillReducing.NONE)
 
         /**
          * In debug mode, it is used to ensure the structure of the matrix isn't mutated during simulation.
@@ -598,30 +625,107 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             }
 
             // Solve G × (dx/dINk) = (db/dINk) for (db/dINk)
-            simulation.solver.solve(rhs, results)
+            simulation.system.solver.solve(rhs, results)
+        }
+    }
+
+    /**
+     * Stable(r) approximate solutions for the power consumers, which may converge over multiple outer-iteration steps.
+     * */
+    class PowerConsumerSolver(val simulation: ElectricalSimulation) {
+        /**
+         * Simplest Norton current predictor (no linear solves).
+         * */
+        inline fun getPredictorCurrentForDevice(device: PowerConsumer) : Double {
+            val previousPotential = device.potential
+            val rN = device.characteristicResistance
+            val targetPower = device.targetPower
+            val minEquivalentResistance = device.minEquivalentResistance
+
+            return if (targetPower.approxEq(0.0) || abs(previousPotential) < 1e-3) {
+                previousPotential / rN
+            } else {
+                val pLimit = (previousPotential * previousPotential) / minEquivalentResistance
+                val limitedPower = min(targetPower, pLimit)
+                (previousPotential / rN) - (limitedPower / previousPotential)
+            }
+        }
+
+        /**
+         * Refines the power consumer currents, with a single relaxation step.
+         * */
+        fun refine(relaxationFactor: Double = 1.0) : Double {
+            val overRelaxation = simulation.powerConsumerOverRelaxation * relaxationFactor
+
+            var maxDelta = 0.0
+
+            for (i in 0 until simulation.powerConsumers.size) {
+                val device = simulation.powerConsumers[i]
+                val predictor = getPredictorCurrentForDevice(device)
+                val previous = device.nortonCurrent
+                val nortonCurrent = (1.0 - overRelaxation) * previous + overRelaxation * predictor
+                val delta = abs(nortonCurrent - device.nortonCurrent)
+                device.nortonCurrent = nortonCurrent
+
+                if(delta > maxDelta) {
+                    maxDelta = delta
+                }
+            }
+
+            simulation.solveWithNewKnowns()
+
+            return maxDelta
+        }
+
+        /**
+         * Refines the power consumer over multiple steps.
+         * Only called when sources don't exist.
+         * */
+        fun approximateSolve() {
+            var lastDelta = refine()
+            var relaxationFactor = 1.0
+
+            repeat(simulation.powerConsumerIndividualLoops) {
+                val newDelta = refine(relaxationFactor)
+
+                if(newDelta > lastDelta) {
+                    relaxationFactor *= simulation.powerConsumerDeltaDamping
+                }
+
+                lastDelta = newDelta
+            }
         }
     }
 
     /**
      * Solver used for the power sources **only**.
-     * The solver looks to bring the residual `F = targetPower - power + penalty` to 0 for all sources.
-     * Only sources were implemented like this because `targetPower` is difficult to compute for consumers (unknown circuit capacity).
-     * For sources, the `targetPower` lies somewhere in the range `[0, desiredPower]`, and it is found by applying the potential constraint of the source.
-     * For the power consumers, we cannot readily know how much power to ask for.
+     * The solver looks to bring the residual to zero for all sources.
+     * The residual is a piecewise function of the potential across the source, target power, actual power, and characteristics (see [getResidualForDevice]).
+     * The unknowns are the Norton currents to apply to the [PowerSource]s in order to bring all of their residuals to zero.
+     * It does so using a nonlinear iterative solver (a Quasi-Newton method). The base method is multidimensional Newton's method.
+     *
+     * At each step, `J × δ = -F` is solved for `δ`, which is the increment applied (after damping) to the unknown Norton currents.
+     * `F` is the residual vector and `J` is the Jacobian of the system.
+     * `J` is somewhat expensive to calculate (it needs a linear solve for each source), so **Broyden's Method** is used to update the previous Jacobian for *some* steps (conditions are placed to ensure this approximation works), which only requires some arithmetic operations.
+     *
+     * A large part of the cost comes from solving that linear system.
+     * It is an `N×N` dense system (`N` being the number of sources), which is solved directly.
+     * Another possible option would be to use Broyden's update for the inverse Jacobian.
+     * I have not done that because the direct solve we are doing is more numerically stable, and we are re-computing the Jacobian relatively frequently anyway.
      * */
-    @Suppress("PrivatePropertyName")
-    class NonlinearSourceSolver(val simulation: ElectricalSimulation) {
+    @Suppress("PrivatePropertyName", "PropertyName")
+    class PowerSourceSystem(val simulation: ElectricalSimulation) {
         private val size = simulation.powerSources.size
         /**
          * The (approximate) Jacobian:
          * */
-        private val J = DMatrixRMaj(size, size)
+        internal val J = DMatrixRMaj(size, size)
         /**
-         * The power residual:
+         * The residual:
          * */
-        private val F = DMatrixRMaj(size, 1)
+        internal val F = DMatrixRMaj(size, 1)
         /**
-         * RHS for the Newton solve (-[F]):
+         * RHS for the Newton solve (`-`[F]):
          * */
         private val MinusF = DMatrixRMaj(size, 1)
         /**
@@ -662,34 +766,85 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             private set
 
         /**
+         * Gets the initial guess for the Norton current.
+         * Check the method to see why *it isn't a good idea* we just use the currents from the source.
+         * */
+        fun initialGuess(device: PowerSource) : Double {
+            /**
+             * Start at the currents from the last timestep (or 0, if this is the first):
+             * */
+            var initialCurrent = device.nortonCurrent
+
+            /**
+             * If the current is ~0, and we're not already solved, we are in a trap where the differential is ~0.
+             * This probably happened because the source is in open circuit.
+             * We will provide an initial guess that doesn't result in a singular system.
+             * */
+            if (initialCurrent.approxEq(0.0, 1e-7)) {
+                val targetPower = device.targetPower
+
+                if (targetPower > 0.0) {
+                    // Guess a V in the penalty region to get a non-zero derivative.
+                    val vGuess = device.maxPotential * 1.01 + 0.1
+                    initialCurrent = vGuess / device.characteristicResistance
+                }
+            }
+
+            return initialCurrent
+        }
+
+        /**
          * Gets the residual for [device].
          * The residual takes into account the desired power, but instead becomes a penalty when the potential constraint is violated.
          * */
         fun getResidualForDevice(device: PowerSource) : Double {
-            val desiredPower = device.targetPower.coerceIn(0.0, device.maxPower)
-            val potentialConstraint = device.maxPotential
-            val potentialAbs = abs(device.potential)
+            val targetPower = device.targetPower
+            val pActual = device.power
+            val v = device.potential
 
-            if(potentialAbs > potentialConstraint) {
-                // Outside the potential constraint. Add a proportional penalty term.
-                return -(potentialAbs - potentialConstraint) - device.power // Do we remove this subtraction?
+            if(targetPower < 1e-12) {
+                return -pActual // Open-circuit behavior
             }
 
-            val blendStart = potentialConstraint * device.blendRegion
-
-            if (potentialAbs <= blendStart) {
-                // Constant power region:
-                return desiredPower - device.power
+            /**
+             * The constraint applies when `V` is positive.
+             * If `V` is negative, then the circuit is "over-powering" us.
+             * */
+            if (v < 0.0) {
+                return targetPower - pActual
             }
 
-            // Blending region:
-            val k = 1.0 - (potentialAbs - blendStart) / (potentialConstraint - blendStart)
+            val vMax = device.maxPotential
 
-            return k * desiredPower - device.power
+            if (v > vMax) {
+                /**
+                 * Violated the potential constraint.
+                 * Applies a penalty proportional to the violation.
+                 * */
+                return -(v - vMax) - pActual
+            }
+
+            val blendStart = vMax * device.blendRegion
+
+            if (v <= blendStart) {
+                /**
+                 * Constant-power region.
+                 * */
+                return targetPower - pActual
+            }
+
+            /**
+             * Blending region. We are approaching the potential constraint.
+             * We scale down the power request so the potential we drive is lower, so we satisfy the potential constraint.
+             * K goes from 1, at the blend start, to 0, at the max potential.
+             * */
+            val k = (1.0 - (v - blendStart) / (vMax - blendStart)).coerceIn(0.0, 1.0)
+
+            return (k * targetPower) - pActual
         }
 
         /**
-         * Evaluates residual `f(x) = (targetPower - measuredPower OR penalty)`, by setting the Norton currents and solving the system.
+         * Evaluates residual by setting the Norton currents and solving the system.
          * @param x The Norton currents to apply.
          * @param out The result vector.
          * */
@@ -700,15 +855,11 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
              * Updates the RHS:
              * */
             for (i in 0 until size) {
-                simulation.powerSources[i].setCurrentFromSolver(x[i])
+                simulation.powerSources[i].nortonCurrent = x[i]
             }
 
             // Solve circuit for new power:
-            if (simulation.knownsChanged) {
-                simulation.solver.solve(simulation.system.known, simulation.system.unknown)
-                simulation.copyResults()
-                simulation.knownsChanged = false
-            }
+            simulation.solveWithNewKnowns()
 
             var maxResidual = 0.0
 
@@ -757,7 +908,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
          * Computes the Jacobian analyically.
          * It can be degenerate, so we use [computeJacobianFallback] if it happens.
          * */
-        @Suppress("LocalVariableName", "SpellCheckingInspection")
+        @Suppress("LocalVariableName", "SpellCheckingInspection", "NonAsciiCharacters")
         private fun computeJacobian() {
             J.zero()
 
@@ -766,73 +917,74 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
 
             var norm = 0.0
 
-            for (k in 0 until size) { // k is the column index (d/dINk)
-                val deviceK = simulation.powerSources[k]
+            // k is the column index (d/dINₖ)
+            for (k in 0 until size) {
+                val deviceₖ = simulation.powerSources[k]
 
                 ++lastSystemEvaluations
                 simulation.sensitivity.solve(
-                    deviceK.positive.node,
-                    deviceK.negative.node
+                    deviceₖ.positive.node,
+                    deviceₖ.negative.node
                 )
 
                 /**
-                 * The partial potential derivative (dVi/dINk) is derived from the sensitivity.
-                 * `i` is the row index (dFi/d...)
+                 * The partial potential derivative (dVᵢ/dINₖ) is derived from the sensitivity.
                  */
                 for (i in 0 until size) {
-                    val device_i = simulation.powerSources[i]
-                    val potential_i = device_i.potential
+                    val deviceᵢ = simulation.powerSources[i]
+                    val Vᵢ = deviceᵢ.potential
 
-                    val positive_i = device_i.positive.node
-                    val negative_i = device_i.negative.node
+                    val positiveNodeᵢ = deviceᵢ.positive.node
+                    val negativeNodeᵢ = deviceᵢ.negative.node
 
-                    val s1 = if(positive_i.isGround) 0.0 else sensitivity[positive_i.id]
-                    val s2 = if(negative_i.isGround) 0.0 else sensitivity[negative_i.id]
+                    val s1 = if(positiveNodeᵢ.isGround) 0.0 else sensitivity[positiveNodeᵢ.id]
+                    val s2 = if(negativeNodeᵢ.isGround) 0.0 else sensitivity[negativeNodeᵢ.id]
 
-                    // dVi/dINk: How potential of source i changes
-                    // with respect to Norton current of source k
-                    val dVi_dINk = s1 - s2
+                    // dVᵢ/dINₖ: How potential of source `i` changes with respect to Norton current of source `k`
+                    val dVᵢ_dINₖ = s1 - s2
 
-                    val INi = device_i.nortonCurrent
-                    val RNi = device_i.characteristicResistance // Constant
+                    val INᵢ = deviceᵢ.nortonCurrent
+                    val RNᵢ = deviceᵢ.characteristicResistance // Constant
 
-                    // Term 1: Calculate d(P_actual,i) / d(INk)
-                    var dPa_dINk = (INi - 2.0 * potential_i / RNi) * dVi_dINk
+                    // Term 1: Calculate d(P_actual,i) / d(INₖ)
+                    var dPa_dINₖ = (INᵢ - 2.0 * Vᵢ / RNᵢ) * dVᵢ_dINₖ
                     if (i == k) {
-                        dPa_dINk += potential_i
+                        dPa_dINₖ += Vᵢ
                     }
 
-                    // TERM 2: Calculate d(Ptargeti) / d(INk)
-                    var dPt_dVi = 0.0 // This is d(P_target_i) / d(V_i)
-                    val Vi = potential_i
-                    val V = abs(Vi)
-                    val C = device_i.maxPotential
-                    val Vb = C * device_i.blendRegion
+                    // Term 2: Calculate d(Ptargetᵢ) / d(INₖ)
+                    var dPt_dVᵢ = 0.0
 
-                    if (V > C) {
-                        // Penalty region: Pt = -(V - C)
-                        dPt_dVi = -sign(Vi)
-                    } else if (V > Vb) {
-                        // Blend region: Pt = Pd * (1 - k)
-                        val Pd = device_i.targetPower.coerceIn(0.0, device_i.maxPower)
-                        val dV_dVb = C - Vb
+                    val desiredPowerᵢ = deviceᵢ.targetPower
 
-                        // Avoid division by zero if blendRegion = 1.0
-                        if (dV_dVb > 1e-9) {
-                            dPt_dVi = -Pd / dV_dVb * sign(Vi)
+                    if(desiredPowerᵢ > 1e-12) {
+                        val vMax = deviceᵢ.maxPotential
+                        val vBlend = vMax * deviceᵢ.blendRegion
+
+                        if (Vᵢ < 0.0) {
+                            dPt_dVᵢ = 0.0
+                        }
+                        else if (Vᵢ > vMax) {
+                            dPt_dVᵢ = -1.0
+                        }
+                        else if (Vᵢ > vBlend) {
+                            val dV_dVb = vMax - vBlend
+
+                            if (dV_dVb > 1e-9) {
+                                dPt_dVᵢ = -desiredPowerᵢ / dV_dVb
+                            }
                         }
                     }
 
-                    val dPt_dINk = dPt_dVi * dVi_dINk
-                    val Jik = dPt_dINk - dPa_dINk
+                    val dPt_dINₖ = dPt_dVᵢ * dVᵢ_dINₖ
+                    val Jᵢₖ = dPt_dINₖ - dPa_dINₖ
+                    norm += Jᵢₖ * Jᵢₖ
 
-                    J.set(i, k, Jik)
-
-                    norm += Jik * Jik
+                    J.set(i, k, Jᵢₖ)
                 }
             }
 
-            if(norm.approxEq(0.0, 1e-3)) {
+            if(norm.isNaN() || norm.isInfinite() || norm.approxEq(0.0, 1e-3)) {
                 // Seems dangerous.
                 computeJacobianFallback()
             }
@@ -902,27 +1054,34 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             return false
         }
 
+        /*
+        * TODO:
+        * The circuit can change its characteristics enormously from step to step. Examples:
+        * - a switch or diode switching, which is implemented as a resistor changing its resistance by say 10 orders of magnitude
+        * - a potential source or current source changing drastically
+        * It would be ideal if we reset the solutions upon detecting that OR if we see that the initial residual is large (conditions to be added).
+        * If we start with the previous Norton currents in these cases, our initial guess may be extremely far away.
+        * */
+
         /**
          * Solves the nonlinear system for the Norton currents that satisfy the devices.
-         *
-         * Quasi-Newton method (Broyden's Method).
-         * We get an initial Jacobian analytically, and then update that Jacobian based on further residual evaluations, unless it is deemed that a new one is needed.
-         * Uses a line search ([lineSearchC], [lineSearchReduction], [lineSearchMaxSteps])
-         * The linear system is solved with as a dense system. When this fails, the Jacobian is regularized and the factorization is re-attempted.
-         * If that also fails, a new Jacobian is computed. If the solve fails now too, then GG.
+         * Throws a [PowerSourceSolverException] with a [PowerSourceSolverFailurePoint] when no solution was found.
          * @return The number of iterations.
          * */
         fun solve() : Int {
             lastSystemEvaluations = 0
 
+            /**
+             * Loads the initial guess Norton currents:
+             * */
             for (i in 0 until size) {
-                x[i] = simulation.powerSources[i].nortonCurrent
+                x[i] = initialGuess(simulation.powerSources[i])
             }
 
             lastMaxResidual = evaluateResidual(x, F)
 
             if (lastMaxResidual <= simulation.powerSourceResidualTolerance) {
-                lastMaxDelta = 0.0
+                lastMaxDelta = 0.0 // No currents were adjusted
                 return 0 // Already in a good state.
             }
 
@@ -931,11 +1090,12 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             /**
              * Set in the loop to mark that the Jacobian needs to be recomputed (done at the start of the loop).
              * */
-            var recomputeJacobian = true // Computes the initial Jacobian.
+            var recomputeJacobian = true // True so it computes the initial Jacobian.
 
             /**
              * The number of times the jacobian has been re-used.
              * Used for periodic recompute (restart).
+             * This is done because the Jacobian from Broyden might be causing slow convergence.
              * */
             var jacobianReuseCount = 0
 
@@ -957,8 +1117,8 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                 }
 
                 /**
-                 * The norm of the residual at this timestep.
-                 * Used for the line search later on.
+                 * The (square) norm of the residual at this timestep.
+                 * Used for the line search later on, to compare this previous residual with the one obtained after the update.
                  * */
                 var initialResidualNorm = 0.0
 
@@ -977,10 +1137,10 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                     computeJacobian()
                     jacobianReuseCount = 0
 
-                    // Try the solve *one* more time with the fresh Jacobian:
+                    // Try the solve once more with the fresh Jacobian:
                     if (!solveForDelta()) {
                         // If the new Jacobian also fails to solve, the problem is truly ill-conditioned. GG.
-                        break
+                        throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.CouldNotDetermineStep)
                     }
                 }
 
@@ -1023,8 +1183,8 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                     delta[i] *= alpha
                 }
 
-                // If the line search didn't converge, then our Jacobian might be bad.
-                // The Broyden update might help.
+                // If the line search didn't find a value that satisfied its exit condition, then our Jacobian might be bad.
+                // We will recompute it below based on the new residual and the previous one we stored.
                 var deltaMax = 0.0
                 var deltaNorm = 0.0 // Used for Broyden below.
 
@@ -1046,13 +1206,10 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                  * It might be worth it to build a counter that measures how many consecutive steps resulted in the delta being low,
                  * and only then apply the criterion.
                  * */
-                // P.S. the potential constraint is incorporated into the residual.
-                // Checking the potential violations here prevents it from exiting the loop when e.g. you have a negative potential a source can never overcome.
-                // The residual will be driven to 0 but the potential constraint will always be violated (which will generate an inverse power on the source, which we can address with a diode)
                 if (maxNewResidual <= simulation.powerSourceResidualTolerance || deltaMax <= simulation.powerSourceDeltaTolerance) {
                     // Accept xNew and copy into devices:
                     for (i in 0 until size) {
-                        simulation.powerSources[i].setCurrentFromSolver(xNew[i])
+                        simulation.powerSources[i].nortonCurrent = xNew[i]
                     }
 
                     return iterations
@@ -1065,8 +1222,23 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                     recomputeJacobian = true
                 }
 
-                if(!recomputeJacobian) {
+                /**
+                 * Updates the Jacobian (Quasi-Newton) if we are not going to recompute it exactly on the next iteration:
+                 * */
+                if(!recomputeJacobian && ((jacobianReuseCount + 1) % simulation.powerSourceJacobianRecomputeInterval != 0)) {
                     // Broyden's method to update the Jacobian:
+
+                    /**
+                     * As the king of solvers, Broyden's Method, faced the Short-Circuited [PowerSource], Broyden asked the generator: "Are you convergent because your delta is small, or is your delta small because you are convergent?"
+                     * The PowerSource simply set its targetPower to 10000W.
+                     * Broyden began opening his domain: "Malevolent Jacobian!" He analytically computed the derivatives, cleaving the residual function into a linear system to solve for the step delta.
+                     * However, the [PowerSource]'s potential V was clamped to 0.0 by the short.
+                     * The derivative d(Power_Actual) / d(I_Norton) was zero. The Jacobian was singular.
+                     * As the solver tried to divide -targetPower by zero, the [PowerSource] simply stated: "Stand proud, you are strong. But with V=0... Nah, I'd win."
+                     * Broyden's LU factorization crumbled as the delta vector exploded to Infinity. In its dying moment, the [PowerSourceSystem] uttered the phrase: "With this treasure I summon... on circuits with player-made shorts, always bet on R_Series!"
+                     * The [PowerSourceSolverException] was trivially caught. And those who pioneered the techniques of MNA, the one who formalized the companion model, they would all bear witness to the bare flesh of the one who is free.
+                     * To the one who left it all behind and his overwhelming stability!
+                     * */
                     if (deltaNorm > 1e-9) {
                         CommonOps_DDRM.mult(J, delta, Js)
 
@@ -1101,13 +1273,15 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             }
 
             // Did not converge. GG.
-            for (i in 0 until size) {
-                simulation.powerSources[i].setCurrentFromSolver(x[i])
-            }
-
-            return simulation.powerSourceMaxIterations
+            throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.DidNotConverge)
         }
     }
+
+    /**
+     * Options for hardening the simulation further.
+     * @param spiceImplicitResistanceTrick A large resistance value. This resistance is stamped between every node and the ground node, to stabilize the system
+     * */
+    data class ConstructionOptions(val spiceImplicitResistanceTrick: Double?)
 
     /**
      * The ground node (also called the *reference node*). Has an ID of [ElectricalNode.GROUND_ID] and contains all the pins which are grounded.
@@ -1125,7 +1299,6 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
      * The MNA system. See [System] for more information.
      * */
     val system: System
-    private val solver = LinearSolverFactory_DSCC.lu(FillReducing.NONE)
 
     /**
      * The components which double-buffer their readouts for display.
@@ -1139,8 +1312,14 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
     val potentialSources: Array<PotentialSource>
 
     /**
+     * The power consumers, included in [components].
+     * These consumers are solved using a cheaper, approximate solver (the [PowerConsumerSolver]).
+     * */
+    val powerConsumers: Array<PowerConsumer>
+
+    /**
      * The power sources, included in [components].
-     * These sources introduce nonlinear equations and are handled specially by the [NonlinearSourceSolver].
+     * These sources introduce nonlinear equations and are handled specially by the [PowerSourceSystem].
      * */
     val powerSources: Array<PowerSource>
 
@@ -1150,13 +1329,20 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
     val sensitivity: SensitivityAnalysis
 
     /**
+     * The nonlinear solver for power consumers, used internally.
+     * `Null` if no consumers exist.
+     * */
+    val consumerSolver: PowerConsumerSolver?
+
+    /**
      * The nonlinear system and solver for power sources, used internally.
      * `Null` if no power sources exist.
      * */
-    val sourceSystem: NonlinearSourceSolver?
+    val sourceSystem: PowerSourceSystem?
 
     init {
         val potentialSources = ArrayList<PotentialSource>()
+        val powerConsumers = ArrayList<PowerConsumer>()
         val powerSources = ArrayList<PowerSource>()
 
         components.forEach {
@@ -1167,6 +1353,10 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                     potentialSources.add(it)
                 }
 
+                is PowerConsumer -> {
+                    powerConsumers.add(it)
+                }
+
                 is PowerSource -> {
                     powerSources.add(it)
                 }
@@ -1174,6 +1364,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         }
 
         this.potentialSources = potentialSources.toTypedArray()
+        this.powerConsumers = powerConsumers.toTypedArray()
         this.powerSources = powerSources.toTypedArray()
 
         potentialSources.forEachIndexed { idx, source ->
@@ -1218,7 +1409,8 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
 
         system = System(this)
         sensitivity = SensitivityAnalysis(this)
-        sourceSystem = if(powerSources.isNotEmpty()) NonlinearSourceSolver(this) else null
+        consumerSolver = if(powerConsumers.isNotEmpty()) PowerConsumerSolver(this) else null
+        sourceSystem = if(powerSources.isNotEmpty()) PowerSourceSystem(this) else null
 
         repositoryComponents.forEach {
             it.repositoryLayer.loadPresentation()
@@ -1247,7 +1439,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
 
     /**
      * Copies MNA results into the various classes.
-     * Can throw [InvalidResultsException].
+     * Can throw [InvalidLinearResultsException].
      * */
     private fun copyResults() {
         /**
@@ -1258,7 +1450,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             val node = nodes[i]
 
             if(result.isNaN() || result.isInfinite()) {
-                throw InvalidResultsException(this, node)
+                throw InvalidLinearResultsException(this, node)
             }
 
             node.potential = result
@@ -1272,12 +1464,55 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
             val source = potentialSources[i]
 
             if(result.isNaN() || result.isInfinite()) {
-                throw InvalidResultsException(this, source)
+                throw InvalidLinearResultsException(this, source)
             }
 
             source.current = result
         }
     }
+
+    /**
+     * Solves the circuit with an updated right-hand side.
+     * It is illegal to call if the matrix isn't factored.
+     * */
+    private fun solveWithNewKnowns() {
+        check(!matrixChanged) {
+            "Cannot solve with new RHS if the matrix changed!"
+        }
+
+        if(knownsChanged) {
+            system.solver.solve(system.known, system.unknown)
+            copyResults()
+            knownsChanged = false
+        }
+    }
+
+    //#region Power Device Solver Options
+
+    /**
+     * Coupling solver iteration count.
+     * */
+    var powerDeviceOuterLoop = 4
+
+    /**
+     * Number of iterations for the power consumers, when power sources don't exist.
+     * */
+    var powerConsumerIndividualLoops = 10
+
+    var powerConsumerDeltaDamping = 0.5
+
+    /**
+     * The successive over-relaxation factor for the power consumer solver.
+     * This factor decays in the loop when the solver starts diverging.
+     * */
+    var powerConsumerOverRelaxation = 0.5
+
+    /**
+     * The approximate time spent by the power consumer solver last step.
+     * Most of these values should be accurate (GC usually shouldn't be happening during the solver loop, but it could).
+     * */
+    var lastPowerConsumerTime = Quantity(0.0, SECOND)
+        private set
 
     /**
      * Max iterations the nonlinear solver for the power sources can take.
@@ -1292,14 +1527,14 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
     var powerSourceJacobianRecomputeInterval = 16
 
     /**
-     * The max allowed power residual for the power devices.
+     * The max allowed power residual for the power sources.
      * */
     var powerSourceResidualTolerance = 1e-4
 
     /**
-     * Exit if the largest current delta is less than this tolerance for the power devices.
+     * Exit if the largest current delta is less than this tolerance for the power sources.
      * */
-    var powerSourceDeltaTolerance = 1e-6
+    var powerSourceDeltaTolerance = 1e-5
 
     /**
      * The number of iterations the nonlinear solver needed in the last step.
@@ -1333,11 +1568,80 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
     var lastPowerSourceTime = Quantity(0.0, SECOND)
         private set
 
+    //#endregion
+
     /**
-     * Steps the system.
+     * Solves the power devices using an outer loop.
+     * Each iteration does the following:
+     * - The power sources are solved exactly using the nonlinear solver
+     * - The power consumers are improved using a single prediction step
+     * */
+    private fun solvePowerDevices() {
+        var powerConsumerTime = Quantity(0.0, SECOND)
+        var powerSourceTime = Quantity(0.0, SECOND)
+        var powerSourceIterations = 0
+        var powerSourceSystemEvaluations = 0
+
+        /**
+         * Solves the Power Consumers and Power Sources individually:
+         * */
+        fun powerDeviceOuterIteration() {
+            if(powerConsumers.isNotEmpty()) {
+                powerConsumerTime += measureDuration {
+                    consumerSolver!!.refine()
+                }
+            }
+
+            if (powerSources.isNotEmpty()) {
+                powerSourceTime += measureDuration {
+                    val system = sourceSystem!!
+                    powerSourceIterations += system.solve()
+                    powerSourceSystemEvaluations += system.lastSystemEvaluations
+                }
+            }
+        }
+
+        if(powerConsumers.isNotEmpty() && powerSources.isNotEmpty()) {
+            /**
+             * Block-solve the consumers and sources.
+             * The blocks are the power sources, and the power consumers.
+             * */
+            repeat(powerDeviceOuterLoop) {
+                powerDeviceOuterIteration()
+            }
+        }
+        else {
+            /**
+             * Only one type of device exists or none exist.
+             * */
+            powerDeviceOuterIteration()
+
+            if(powerConsumers.isNotEmpty()) {
+                /**
+                 * Only consumers exist:
+                 * */
+                consumerSolver!!.approximateSolve()
+            }
+            else if(powerSources.isNotEmpty()) {
+                /**
+                 * Only sources exist. Do a single, exact step:
+                 * */
+                sourceSystem!!.solve()
+            }
+        }
+
+        lastPowerConsumerTime = powerConsumerTime
+        lastPowerSourceTime = powerSourceTime
+        lastPowerSourceIterationCount = powerSourceIterations
+        lastPowerSourceSystemEvaluations = powerSourceSystemEvaluations
+    }
+
+    /**
+     * Steps the simulation.
      * Can throw:
-     * [SingularSystemException] when the linear system factorization failed.
-     * [InvalidResultsException] when the result currents or potentials are NaN or Infinity.
+     *  - [SingularLinearSystemException] when the linear system factorization failed.
+     *  - [InvalidLinearResultsException] when the result currents or potentials are NaN or Infinity.
+     *  - [PowerSourceSolverException] when the nonlinear solver cannot find a solution for the power sources.
      * */
     fun step() {
         validateUsage()
@@ -1358,6 +1662,20 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
                 it.stamp()
             }
 
+            /**
+             * Adds a tiny conductance between every node and ground.
+             * This regularizes the matrix so the solution is more stable.
+             * */
+            if(constructionOptions.spiceImplicitResistanceTrick != null) {
+                nodes.forEach { node ->
+                    system.stampResistance(
+                        node,
+                        groundNode,
+                        constructionOptions.spiceImplicitResistanceTrick
+                    )
+                }
+            }
+
             system.endConstruction()
 
             // Likely not necessary:
@@ -1374,7 +1692,7 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
          * Updates the matrix factorization, if necessary.
          * */
         if(matrixChanged) {
-            solver.setA(system.matrix)
+            system.solver.setA(system.matrix)
         }
 
         /**
@@ -1382,10 +1700,10 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
          * */
         if(matrixChanged || knownsChanged) {
             try {
-                solver.solve(system.known, system.unknown)
+                system.solver.solve(system.known, system.unknown)
             }
             catch (e: Exception) {
-                throw SingularSystemException(this, e)
+                throw SingularLinearSystemException(this, e)
             }
 
             copyResults()
@@ -1394,15 +1712,9 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
         }
 
         /**
-         * Solves the Power Sources:
+         * Solves the [PowerSource]s and [PowerConsumer]s using the special solver algorithm.
          * */
-        if (powerSources.isNotEmpty()) {
-            lastPowerSourceTime = measureDuration {
-                val system = sourceSystem!!
-                lastPowerSourceIterationCount = system.solve()
-                lastPowerSourceSystemEvaluations = system.lastSystemEvaluations
-            }
-        }
+        solvePowerDevices()
 
         components.forEach {
             it.finishStep()
@@ -1459,11 +1771,30 @@ class ElectricalSimulation(val dt: Double, val components: Array<ElectricalCompo
     /**
      * Thrown when the **main MNA solve** fails (power sources should handle their failures by themselves).
      * */
-    class SingularSystemException(val simulation: ElectricalSimulation, ejmlException: Exception) : Exception(ejmlException)
+    class SingularLinearSystemException(val simulation: ElectricalSimulation, ejmlException: Exception) : Exception(ejmlException)
 
     /**
-     * Thrown when the results are invalid (NaN or infinity).
+     * Thrown when the MNA results (the node potentials and potential source currents) are invalid (NaN or Infinity).
      * @param obj The node or device where the error was discovered (if it's any help).
      * */
-    class InvalidResultsException(val simulation: ElectricalSimulation, val obj: Any) : Exception()
+    class InvalidLinearResultsException(val simulation: ElectricalSimulation, val obj: Any) : Exception()
+
+    /**
+     * Indicates the failure point from the nonlinear solve.
+     * */
+    enum class PowerSourceSolverFailurePoint {
+        /**
+         * The step could not be solved for even after cleaning up the Jacobian and computing a new one.
+         * */
+        CouldNotDetermineStep,
+        /**
+         * The residual was not driven to 0 after all the iterations have been exhausted.
+         * */
+        DidNotConverge
+    }
+
+    /**
+     * Thrown when the nonlinear solver for the power sources failed.
+     * */
+    class PowerSourceSolverException(val simulation: ElectricalSimulation, val reason: PowerSourceSolverFailurePoint) : Exception()
 }

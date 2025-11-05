@@ -377,7 +377,7 @@ class ElectricalCircuitCompiler(val subSolverData: ElectricalCircuitForestBuilde
      * - 2. Optimizers run and modify the node set and pin forest.
      * - 3. The [ElectricalSimulation] is constructed. It forms its own internal node representation and creates its system.
      * */
-    fun compile(dt: Double, useLineOptimization: Boolean) : ElectricalSimulation {
+    fun compile(dt: Double, useLineOptimization: Boolean, constructionOptions: ElectricalSimulation.ConstructionOptions) : ElectricalSimulation {
         val pinForest = buildPinForest()
         val nodes = subSolverData.nodes.toHashSet()
 
@@ -391,7 +391,8 @@ class ElectricalCircuitCompiler(val subSolverData: ElectricalCircuitForestBuilde
         return ElectricalSimulation(
             dt,
             circuitData.components.toTypedArray(),
-            circuitData.forest.map
+            constructionOptions,
+            circuitData.forest.map,
         )
     }
 }
@@ -553,13 +554,13 @@ class ElectricalCircuitForestBuilder : ElectricalComponentSet, ElectricalConnect
     /**
      * Builds all sub solvers. It also ensures each sub solver has a chosen reference node.
      * */
-    fun build(dt: Double, useLineOptimization: Boolean) = SubSolverSet(run {
+    fun build(dt: Double, useLineOptimization: Boolean, constructionOptions: ElectricalSimulation.ConstructionOptions) = SubSolverSet(run {
         validateUsage()
         selectReferenceNodes()
 
         builder.subSolvers.map { subSolver ->
             val compiler = ElectricalCircuitCompiler(subSolver)
-            compiler.compile(dt, useLineOptimization)
+            compiler.compile(dt, useLineOptimization, constructionOptions)
         }
     })
 }

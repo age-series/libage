@@ -645,12 +645,6 @@ class Inductor : NortonSystem(), ReadoutElectricalComponent<Inductor, Inductor.R
      * Gets the energy stored in the electromagnetic field.
      * */
     val energy: Double get() = 0.5 * inductance * (current * current)
-
-    override fun simulationDestroyed() {
-        super.simulationDestroyed()
-
-        flux = 0.0 // Is this right?
-    }
 }
 
 /**
@@ -937,24 +931,119 @@ class LinearDiode : Resistor() {
 }
 
 /**
- * A Power-Controlled source.
- * These are difficult to implement *without spending a lot of CPU time* (they are nonlinear and stiff, and they don't usually play well with each other).
- * As such, approximations were made. What I did is (much) more expensive than what 「Grissess」 did, but I really hope it pays off (I would be surprised if it did...).
+ * Power device implemented as a Norton system.
+ * The Norton current is an unknown that is found by a special iterative solver.
+ * We have implementations for both generator and load:
+ * - [PowerConsumer]
+ * - [PowerSource]
  *
- * See [ElectricalSimulation] for more information about how it was implemented.
- *
- * It is recommended to use these devices **only when necessary**. If possible, use [PotentialSource]s instead.
+ * These are not solved simultaneously. For more information, see the documentation on [ElectricalSimulation].
  * */
-class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, PowerSource.Repository> {
+abstract class PowerDevice : NortonSystem() {
+    /**
+     * Computes and sets *some* resistance for the Norton system.
+     * This resistance is a characteristic resistance, that sort of plays well.
+     * **Setting this sets [characteristicResistance], which needs a matrix re-factor!**
+     *
+     * I recommend calling this once, after you construct your device, with the expected operating parameters of the device.
+     * */
+    fun setStabilizingResistance(expectedPotential: Double, expectedPower: Double) {
+        characteristicResistance = if(expectedPower.approxEq(0.0) || expectedPotential.approxEq(0.0)) {
+            ElectricalSimulation.MAX_RESISTANCE
+        } else {
+            (expectedPotential * expectedPotential / expectedPower).coerceIn(ElectricalSimulation.MIN_RESISTANCE, ElectricalSimulation.MAX_RESISTANCE)
+        }
+    }
+
+    /**
+     * The stabilizing resistance of the Norton system.
+     * Also consider using [setStabilizingResistance].
+     * */
+    var characteristicResistance: Double
+        get() = componentValue
+        set(value) { componentValue = value }
+}
+
+/**
+ * Grissess-style power-controlled sink, implemented as a Norton system with a constant conductance.
+ * Solved using a cheap approximate successive over-relaxation method (see [ElectricalSimulation.PowerConsumerSolver]).
+ * ## Recommendations:
+ * ### Add a [Capacitor] in parallel:
+ * - The capacitor will absorb the shock of a sudden switch
+ * - When the consumer suddenly tries to draw a large current, the capacitor will supply it and the circuit potential won't collapse
+ * - When the consumer suddenly stops drawing, the capacitor absorbs the potential spike
+ * - It smooths the potential coming into the calculation
+ * ### Add a [Resistor] in series (with the capacitor-consumer system):
+ * - The resistor will further arrest large spikes sent by the stiff device
+ * */
+class PowerConsumer : PowerDevice(), ReadoutElectricalComponent<PowerConsumer, PowerConsumer.Repository> {
+    override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
+        Repository(this)
+    }
+
+    class Repository(val consumer: PowerConsumer) : ReadoutRepository {
+        var potential = Quantity(0.0, VOLT)
+            private set
+
+        var current = Quantity(0.0, AMPERE)
+            private set
+
+        var power = Quantity(0.0, WATT)
+            private set
+
+        override fun loadValues() {
+            potential = Quantity(consumer.potential)
+            current = Quantity(consumer.current)
+            power = Quantity(consumer.power)
+        }
+    }
+
+    /**
+     * The maximum power to consume.
+     * */
+    var targetPower: Double = 0.0
+        set(value) {
+            if (value.isNaN() || value.isInfinite() || value < 0.0) {
+                error("Invalid target power $value")
+            }
+
+            field = value
+        }
+
+    /**
+     * The minimum "equivalent resistance" of the device.
+     * This is approximately the resistance you'd have to give to a resistor that replaced this device in the circuit and didn't change anything.
+     * This constraint ensures we do not create a short-circuit, which is not solvable.
+     * */
+    var minEquivalentResistance: Double = 1.0
+        set(value) {
+            if (value.isNaN() || value.isInfinite() || value < ElectricalSimulation.MIN_RESISTANCE || value > ElectricalSimulation.MAX_RESISTANCE) {
+                error("Invalid min equivalent resistance $value")
+            }
+
+            field = value
+        }
+
+    /**
+     * The power being consumed. In normal conditions, it is positive.
+     * **It can be negative due to solver error. Please ensure you treat that case, possibly by just taking that value as 0.**
+     * */
+    val power get() = potential * current
+}
+
+/**
+ * The [PowerSource] is the most complex and powerful generator component in the electrical simulation.
+ * Unlike a simple [PotentialSource] or [CurrentSource], it doesn't use a fixed (independent) potential or current.
+ * Instead, it attempts to **generate a specific power**, making it an ideal component for modeling advanced, stiff, finely-grained devices like DC-DC converters, that dispatch energy from a small buffer.
+ * This precision comes at a cost. The [PowerSource] is a nonlinear component that doesn't fit in the standard MNA formulation, meaning it requires an expensive iterative solver ([ElectricalSimulation.PowerSourceSystem]) to find its operating point at every timestep, in tandem with every other [PowerSource].
+ * */
+class PowerSource : PowerDevice(), ReadoutElectricalComponent<PowerSource, PowerSource.Repository> {
     override val repositoryLayer = ElectricalReadoutRepositoryLayer<Repository> {
         Repository(this)
     }
 
     class Repository(val source: PowerSource) : ReadoutRepository {
         var maxPotential = Quantity(0.0, VOLT)
-            private set
-
-        var maxPower = Quantity(0.0, WATT)
             private set
 
         var potential = Quantity(0.0, VOLT)
@@ -968,13 +1057,15 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
 
         override fun loadValues() {
             maxPotential = Quantity(source.maxPotential)
-            maxPower = Quantity(source.maxPower)
             potential = Quantity(source.potential)
             current = Quantity(source.current)
             power = Quantity(source.power)
         }
     }
 
+    /**
+     * The index of this source into the nonlinear system.
+     * */
     var powerSourceIndex = -1
         private set
 
@@ -989,6 +1080,9 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
         powerSourceIndex = index
     }
 
+    /**
+     * Resets the nonlinear solver index.
+     * */
     override fun simulationDestroyed() {
         super.simulationDestroyed()
 
@@ -996,9 +1090,7 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
     }
 
     /**
-     * The "potential rating" of the device. This will also be the potential constraint.
-     * It's part of the conductance stabilizing the Norton system. It must be positive and non-zero normally.
-     * **Changing this causes a matrix re-factor unless [freezeResistance] is set.**
+     * This is the open-circuit potential of the power source.
      * */
     var maxPotential: Double = 1.0
         set(value) {
@@ -1007,80 +1099,47 @@ class PowerSource : NortonSystem(), ReadoutElectricalComponent<PowerSource, Powe
             }
 
             field = value
-
-            if(!freezeResistance) {
-                computePVCharacteristicResistance()
-            }
         }
 
     /**
-     * The "power rating" of the device. This constrains the [targetPower] in a range of [0, [maxPower]].
-     * It's part of the conductance stabilizing the Norton system. It must be positive and non-zero normally.
-     * **Changing this causes a matrix re-factor unless [freezeResistance] is set.**
+     * Internally, the power term used in the residual starts dropping when [potential] `>` [maxPotential]`×`[blendRegion].
      * */
-    var maxPower: Double = 1.0
+    var blendRegion: Double = 0.95
         set(value) {
-            if(value.isNaN() || value.isInfinite() || value <= 0.0) {
-                error("Invalid max power $value")
+            if(value.isNaN() || value.isInfinite() || value <= 0.0 || value >= 1.0) {
+                error("Invalid blend region $value")
             }
 
             field = value
-
-            if(!freezeResistance) {
-                computePVCharacteristicResistance()
-            }
         }
 
     /**
-     * Blend region used to interpolate the piecewise function that appears in the residual calculation.
-     * */
-    var blendRegion = 0.95
-
-    /**
-     * The power to generate.
-     * */
-    var targetPower = 0.0
-
-    /**
-     * If set to true, then the characteristic resistance will not be re-computed when [maxPotential] or [maxPower] is changed.
+     * The (max) power to generate or consume.
      *
-     * If the operating regime of this source is variable (dynamic), consider initializing [maxPotential] and [maxPower] to some reasonable operating point estimates or manually setting [characteristicResistance], then freezing.
+     * Based on the potential at the operating point:
+     * - If the potential is negative, then the source will simply push all possible power ([power] ≈ [targetPower])
+     * - If the potential is positive, then the source will push some fraction of the desired power ([power] ∈ `[0, `[targetPower]`]`)
      * */
-    var freezeResistance = false
+    var targetPower: Double = 0.0
+        set(value) {
+            if(value.isNaN() || value.isInfinite()) {
+                error("Invalid target power $value")
+            }
 
-    /**
-     * Computes *some* resistance for the Norton system.
-     * This resistance is a characteristic resistance, that sort of plays well.
-     * */
-    fun computePVCharacteristicResistance() {
-        characteristicResistance = if(maxPower.approxEq(0.0) || maxPotential.approxEq(0.0)) {
-            ElectricalSimulation.MAX_RESISTANCE
-        } else {
-            (maxPotential * maxPotential / maxPower).coerceIn(ElectricalSimulation.MIN_RESISTANCE, ElectricalSimulation.MAX_RESISTANCE)
+            if(value < 0.0) {
+                error("Target power must be positive! $value")
+            }
+
+            field = value
         }
-    }
-
-    init {
-        computePVCharacteristicResistance()
-    }
-
-    /**
-     * The stabilizing resistance of the Norton system.
-     * */
-    var characteristicResistance: Double
-        get() = componentValue
-        set(value) { componentValue = value }
-
-    /**
-     * Called by the nonlinear solver to set a new current.
-     * This will be used to re-solve the circuit to get the new power, and new residual.
-     * */
-    internal fun setCurrentFromSolver(current: Double) {
-        nortonCurrent = current
-    }
 
     /**
      * Gets the power generated by this source. By Grissess' convention, this is positive when power is leaving the source.
+     * If it is negative, then it is entering the source.
+     *
+     * Even if you set this up as a generator or consumer, you may get the opposite sign of the power you expect here.
+     * That happens if the circuit is "overpowering" this source (i.e. it is inducing a potential larger than what the source can compensate for with your target power).
+     * This is expected behavior. If this is disruptive, consider using a diode. Also consider using that power violation to heat up the device.
      * */
     val power get() = -potential * current
 }
