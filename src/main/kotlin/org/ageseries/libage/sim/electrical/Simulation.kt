@@ -13,6 +13,7 @@ import org.ejml.data.DMatrixSparseCSC
 import org.ejml.dense.row.CommonOps_DDRM
 import org.ejml.dense.row.factory.LinearSolverFactory_DDRM
 import org.ejml.interfaces.linsol.LinearSolverDense
+import org.ejml.interfaces.linsol.LinearSolverSparse
 import org.ejml.sparse.FillReducing
 import org.ejml.sparse.csc.factory.LinearSolverFactory_DSCC
 import java.util.concurrent.ConcurrentHashMap
@@ -441,7 +442,7 @@ class ElectricalSimulation(
         /**
          * The sparse solver for the system.
          * */
-        val solver = LinearSolverFactory_DSCC.lu(FillReducing.NONE)
+        val solver: LinearSolverSparse<DMatrixSparseCSC, DMatrixRMaj> = LinearSolverFactory_DSCC.lu(FillReducing.NONE)
 
         /**
          * In debug mode, it is used to ensure the structure of the matrix isn't mutated during simulation.
@@ -711,11 +712,605 @@ class ElectricalSimulation(
     }
 
     /**
-     * Solver used for the power sources **only**.
-     * The solver looks to bring the residual to zero for all sources.
-     * The residual is a piecewise function of the potential across the source, target power, actual power, and characteristics (see [getResidualForDevice]).
-     * The unknowns are the Norton currents to apply to the [PowerSource]s in order to bring all of their residuals to zero.
-     * It does so using a nonlinear iterative solver (a Quasi-Newton method). The base method is multidimensional Newton's method.
+     * As the Solver approached the Coupled Power System, it asked: "Are you non-linear because you are stiff, or are you stiff because you are non-linear?"
+     *
+     * The Solver began opening its domain: "Unstable Iteration Shrine!" It activated its cursed technique, "Block-Coordinate Gauss-Seidel," to decouple the [PowerConsumer]s and [PowerSource]s.
+     *
+     * "This is fine," the Solver thought, "the [PowerConsumer] block will just be a simple analytical getPredictorCurrentForDevice."
+     *
+     * However, the [PowerConsumer] was coupled to a [Capacitor]. The solver's first guess was based on a stale voltage. The system immediately oscillated to infinity.
+     *
+     * "Stand proud," the Coupled System stated, "you are strong. But you forgot the Thevenin equivalent. Nah, I'd win."
+     *
+     * The Solver's domain crumbled. "The guess... the initial guess is bad..."
+     *
+     * In its dying moment, the Solver uttered the phrase: "With this treasure, I summon... [computeTheveninForNortonSystem]!"
+     *
+     * The Solver stood up. "Throughout the O(N^3) and O(N^2) domains, I alone am the bottleneck." It activated its ultimate technique: "Domain Expansion: N=50 Solar Farm Performance Test!"
+     *
+     * It unleashed the Sherman-Morrison J^-1 Update, cleaving the O(N^3) solveForDelta into a blazing-fast O(N^2) matrix-vector multiply.
+     *
+     * But the benchmark results came back... they were identical.
+     *
+     * The [PowerSourceSystem]'s true cost was never the [solveForDelta] function. It was the k * C_MNA cost of the Line Search.
+     *
+     * The Solver fell to its knees. The O(N^2) optimization was just "in the noise."
+     *
+     * The Coupled System simply said: "Stand proud. You are a good benchmark. But when it comes to performance, you forgot about [evaluateResidual]. Nah, I'd win."
+     *
+     * The ones who pioneered EJML... The ones who formalized the Newton-Raphson method... They would all bear witness to the true nature of the bottleneck. To the one who left it all behind... and his overwhelming Line Search Cost.
+     * */
+    @Suppress("PrivatePropertyName", "PropertyName")
+    class PowerSourceSystemSM(val simulation: ElectricalSimulation) {
+        private val size = simulation.powerSources.size
+        /**
+         * The (approximate) inverse Jacobian.
+         * */
+        internal val H = DMatrixRMaj(size, size)
+        /**
+         * Temporary matrix to hold the actual (non-inverted) Jacobian before it's inverted into J.
+         */
+        private val J = DMatrixRMaj(size, size)
+        /**
+         * Temporary row vector to hold s^T * H
+         */
+        private val sT_H = DMatrixRMaj(1, size)
+        /**
+         * The residual:
+         * */
+        internal val F = DMatrixRMaj(size, 1)
+        /**
+         * RHS for the Newton solve (`-`[F]):
+         * */
+        private val MinusF = DMatrixRMaj(size, 1)
+        /**
+         * Residuals after solve and apply new unknowns:
+         * */
+        private val FNew = DMatrixRMaj(size, 1)
+        /**
+         * Step produced by Newton:
+         * */
+        private val delta = DMatrixRMaj(size, 1)
+        private val solver: LinearSolverDense<DMatrixRMaj> = LinearSolverFactory_DDRM.lu(size)
+
+        // Temporary storage:
+
+        // FDM:
+        private val f0 = DMatrixRMaj(size, 1)
+        private val f1 = DMatrixRMaj(size, 1)
+        private val x1 = DoubleArray(size)
+
+        // Step:
+        private val x = DoubleArray(size)
+        private val xNew = DoubleArray(size)
+        private val yMinusJs = DMatrixRMaj(size, 1) // Will be used for y, and (s - Hy)
+        private val Js = DMatrixRMaj(size, 1) // Will be used for H*y
+
+        // Line search:
+        var lineSearchC = 1e-4
+        var lineSearchReduction = 0.5
+        var lineSearchMaxSteps = 10 // Each one is a new residual calculation. Better give up and update the Jacobian.
+
+        var lastSystemEvaluations = 0
+            private set
+
+        var lastMaxResidual = 0.0
+            private set
+
+        var lastMaxDelta = 0.0
+            private set
+
+        var lastForceJacobianResets = 0
+            private set
+
+        /**
+         * Gets the initial guess for the Norton current.
+         * Check the method to see why *it isn't a good idea* we just use the currents from the source.
+         * */
+        fun initialGuess(device: PowerSource) : Double {
+            /**
+             * Start at the currents from the last timestep (or 0, if this is the first):
+             * */
+            var initialCurrent = device.nortonCurrent
+
+            /**
+             * If the current is ~0, and we're not already solved, we are in a trap where the differential is ~0.
+             * This probably happened because the source is in open circuit.
+             * We will provide an initial guess that doesn't result in a singular system.
+             * */
+            if (initialCurrent.approxEq(0.0, 1e-7)) {
+                val targetPower = device.targetPower
+
+                if (targetPower > 0.0) {
+                    // Guess a V in the penalty region to get a non-zero derivative.
+                    val vGuess = device.maxPotential * 1.01 + 0.1
+                    initialCurrent = vGuess / device.characteristicResistance
+                }
+            }
+
+            return initialCurrent
+        }
+
+        /**
+         * Gets the residual for [device].
+         * The residual takes into account the desired power, but instead becomes a penalty when the potential constraint is violated.
+         * */
+        fun getResidualForDevice(device: PowerSource) : Double {
+            val targetPower = device.targetPower
+            val pActual = device.power
+            val v = device.potential
+
+            if(targetPower < 1e-12) {
+                return -pActual // Open-circuit behavior
+            }
+
+            /**
+             * The constraint applies when `V` is positive.
+             * If `V` is negative, then the circuit is "over-powering" us.
+             * */
+            if (v < 0.0) {
+                return targetPower - pActual
+            }
+
+            val vMax = device.maxPotential
+
+            if (v > vMax) {
+                /**
+                 * Violated the potential constraint.
+                 * Applies a penalty proportional to the violation.
+                 * */
+                return -(v - vMax) - pActual
+            }
+
+            val blendStart = vMax * device.blendRegion
+
+            if (v <= blendStart) {
+                /**
+                 * Constant-power region.
+                 * */
+                return targetPower - pActual
+            }
+
+            /**
+             * Blending region. We are approaching the potential constraint.
+             * We scale down the power request so the potential we drive is lower, so we satisfy the potential constraint.
+             * K goes from 1, at the blend start, to 0, at the max potential.
+             * */
+            val k = (1.0 - (v - blendStart) / (vMax - blendStart)).coerceIn(0.0, 1.0)
+
+            return (k * targetPower) - pActual
+        }
+
+        /**
+         * Evaluates residual by setting the Norton currents and solving the system.
+         * @param x The Norton currents to apply.
+         * @param out The result vector.
+         * */
+        fun evaluateResidual(x: DoubleArray, out: DMatrixRMaj) : Double {
+            ++lastSystemEvaluations
+
+            /**
+             * Updates the RHS:
+             * */
+            for (i in 0 until size) {
+                simulation.powerSources[i].nortonCurrent = x[i]
+            }
+
+            // Solve circuit for new power:
+            simulation.solveWithNewKnowns()
+
+            var maxResidual = 0.0
+
+            simulation.powerSources.forEachIndexed { i, device ->
+                val powerResidual = getResidualForDevice(device)
+
+                out.set(i, powerResidual)
+
+                val magnitude = abs(powerResidual)
+                if (magnitude > maxResidual) {
+                    maxResidual = magnitude
+                }
+            }
+
+            return maxResidual
+        }
+
+        /**
+         * Evaluates the Jacobian using forward differences (N + 1 solves).
+         * It uses a very simple adaptive step size.
+         * This is the last fallback. If the solve fails here, we will throw.
+         * */
+        private fun computeJacobianFallback() {
+            J.zero()
+            x.copyInto(x1)
+            evaluateResidual(x, f0)
+
+            val factor = 1e-2
+            val currentScale = 1.0 // A
+            val maxStep = 10.0 // A
+
+            for (j in 0 until size) {
+                val dI = min(maxStep, factor * max(abs(0.01 * x1[j]), currentScale))
+
+                x1[j] += dI
+                evaluateResidual(x1, f1)
+                x1[j] -= dI
+
+                for (i in 0 until size) {
+                    val differential = (f1.get(i) - f0.get(i)) / dI
+                    J.set(i, j, differential) // Compute into tempJ
+                }
+            }
+
+            try {
+                if (!solver.setA(J)) {
+                    throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.CouldNotDetermineStep)
+                }
+
+                solver.invert(H)
+            }
+            catch (e: Exception) {
+                throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.CouldNotDetermineStep)
+            }
+        }
+
+        /**
+         * Computes the Jacobian analyically.
+         * It can be degenerate, so we use [computeJacobianFallback] if it happens.
+         * */
+        @Suppress("LocalVariableName", "SpellCheckingInspection", "NonAsciiCharacters")
+        private fun computeJacobian() {
+            J.zero()
+
+            val size = simulation.powerSources.size
+            val sensitivity = simulation.sensitivity.results
+
+            var norm = 0.0
+
+            // k is the column index (d/dINₖ)
+            for (k in 0 until size) {
+                val deviceₖ = simulation.powerSources[k]
+
+                ++lastSystemEvaluations
+                simulation.sensitivity.solve(
+                    deviceₖ.positive.node,
+                    deviceₖ.negative.node
+                )
+
+                /**
+                 * The partial potential derivative (dVᵢ/dINₖ) is derived from the sensitivity.
+                 */
+                for (i in 0 until size) {
+                    val deviceᵢ = simulation.powerSources[i]
+                    val Vᵢ = deviceᵢ.potential
+
+                    val positiveNodeᵢ = deviceᵢ.positive.node
+                    val negativeNodeᵢ = deviceᵢ.negative.node
+
+                    val s1 = if(positiveNodeᵢ.isGround) 0.0 else sensitivity[positiveNodeᵢ.id]
+                    val s2 = if(negativeNodeᵢ.isGround) 0.0 else sensitivity[negativeNodeᵢ.id]
+
+                    // dVᵢ/dINₖ: How potential of source `i` changes with respect to Norton current of source `k`
+                    val dVᵢ_dINₖ = s1 - s2
+
+                    val INᵢ = deviceᵢ.nortonCurrent
+                    val RNᵢ = deviceᵢ.characteristicResistance // Constant
+
+                    // Term 1: Calculate d(P_actual,i) / d(INₖ)
+                    var dPa_dINₖ = (INᵢ - 2.0 * Vᵢ / RNᵢ) * dVᵢ_dINₖ
+                    if (i == k) {
+                        dPa_dINₖ += Vᵢ
+                    }
+
+                    // Term 2: Calculate d(Ptargetᵢ) / d(INₖ)
+                    var dPt_dVᵢ = 0.0
+
+                    val desiredPowerᵢ = deviceᵢ.targetPower
+
+                    if(desiredPowerᵢ > 1e-12) {
+                        val vMax = deviceᵢ.maxPotential
+                        val vBlend = vMax * deviceᵢ.blendRegion
+
+                        if (Vᵢ < 0.0) {
+                            dPt_dVᵢ = 0.0
+                        }
+                        else if (Vᵢ > vMax) {
+                            dPt_dVᵢ = -1.0
+                        }
+                        else if (Vᵢ > vBlend) {
+                            val dV_dVb = vMax - vBlend
+
+                            if (dV_dVb > 1e-9) {
+                                dPt_dVᵢ = -desiredPowerᵢ / dV_dVb
+                            }
+                        }
+                    }
+
+                    val dPt_dINₖ = dPt_dVᵢ * dVᵢ_dINₖ
+                    val Jᵢₖ = dPt_dINₖ - dPa_dINₖ
+                    norm += Jᵢₖ * Jᵢₖ
+
+                    J.set(i, k, Jᵢₖ) // Compute into tempJ
+                }
+            }
+
+            if(norm.isNaN() || norm.isInfinite() || norm.approxEq(0.0, 1e-3)) {
+                // Seems dangerous.
+                computeJacobianFallback()
+                return // Fallback already inverted into J
+            }
+
+            // Invert tempJ into J (which stores H)
+            try {
+                if (!solver.setA(J)) {
+                    // Decomposition failed, fallback
+                    computeJacobianFallback()
+                    return
+                }
+
+                solver.invert(H)
+            } catch (e: Exception) {
+                // Inversion failed, fallback
+                computeJacobianFallback()
+            }
+        }
+
+        /**
+         * Checks if any values inside the [delta] are infinite or NaN.
+         * This doesn't mean it is strictly valid; numerical errors could have driven it to bad (very large) values.
+         * */
+        private fun isDeltaValid() = !delta.data.any { it.isInfinite() || it.isNaN() }
+
+        /**
+         * Solve for delta using: delta = H * (-F) (matrix multiplication). The return value will only check if the entries are NaN or infinity.
+         * */
+        private fun solveForDelta() : Boolean {
+            CommonOps_DDRM.mult(H, MinusF, delta)
+            return isDeltaValid()
+        }
+
+        /*
+        * TODO:
+        * The circuit can change its characteristics enormously from step to step. Examples:
+        * - a switch or diode switching, which is implemented as a resistor changing its resistance by say 10 orders of magnitude
+        * - a potential source or current source changing drastically
+        * It would be ideal if we reset the solutions upon detecting that OR if we see that the initial residual is large (conditions to be added).
+        * If we start with the previous Norton currents in these cases, our initial guess may be extremely far away.
+        * */
+
+        /**
+         * Solves the nonlinear system for the Norton currents that satisfy the devices.
+         * Throws a [PowerSourceSolverException] with a [PowerSourceSolverFailurePoint] when no solution was found.
+         * @return The number of iterations.
+         * */
+        @Suppress("LocalVariableName")
+        fun solve() : Int {
+            lastSystemEvaluations = 0
+
+            /**
+             * Loads the initial guess Norton currents:
+             * */
+            for (i in 0 until size) {
+                x[i] = initialGuess(simulation.powerSources[i])
+            }
+
+            lastMaxResidual = evaluateResidual(x, F)
+
+            if (lastMaxResidual <= simulation.powerSourceResidualTolerance) {
+                lastMaxDelta = 0.0 // No currents were adjusted
+                return 0 // Already in a good state.
+            }
+
+            var iterations = 0
+
+            /**
+             * Set in the loop to mark that the Jacobian needs to be recomputed (done at the start of the loop).
+             * */
+            var recomputeJacobian = true
+
+            /**
+             * The number of times the jacobian has been re-used.
+             * Used for periodic recompute (restart).
+             * This is done because the Jacobian from Broyden might be causing slow convergence.
+             * */
+            var jacobianReuseCount = 0
+            lastForceJacobianResets = 0
+
+            fun requestJacobianReset() {
+                lastForceJacobianResets++
+                recomputeJacobian = true
+            }
+
+            while (iterations < simulation.powerSourceMaxIterations) {
+                iterations++
+
+                if(recomputeJacobian) {
+                    computeJacobian() // This now computes J and inverts it into the 'J' field
+                    recomputeJacobian = false
+                    jacobianReuseCount = 0
+                }
+                else {
+                    jacobianReuseCount++
+                    if(jacobianReuseCount % simulation.powerSourceJacobianRecomputeInterval == 0) {
+                        // Convergence might be too slow:
+                        computeJacobian()
+                        jacobianReuseCount = 0
+                    }
+                }
+
+                /**
+                 * The (square) norm of the residual at this timestep.
+                 * Used for the line search later on, to compare this previous residual with the one obtained after the update.
+                 * */
+                var initialResidualNorm = 0.0
+
+                // Negate F and calculate the residual's norm:
+                for (i in 0 until size){
+                    val value = F.get(i)
+                    initialResidualNorm += value * value
+                    MinusF.set(i, -value)
+                }
+
+                if(!solveForDelta()) {
+                    // Discard and recompute:
+                    computeJacobian() // Recomputes J and inverts into H
+                    jacobianReuseCount = 0
+
+                    // Try the solve once more with the fresh H:
+                    if (!solveForDelta()) {
+                        // If the new H also fails, the problem is truly ill-conditioned. GG.
+                        throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.CouldNotDetermineStep)
+                    }
+                }
+
+                // Line search:
+                var alpha = 1.0 // Step size
+                var maxNewResidual = 0.0
+
+                // Residual before applying the new delta:
+                val previousResidual = lastMaxResidual
+
+                for (step in 0 until lineSearchMaxSteps) {
+                    // New currents, by applying the dampened δ:
+                    for (i in 0 until size) {
+                        xNew[i] = x[i] + alpha * delta.get(i)
+                    }
+
+                    // P.S. this changes the residual used by Broyden, I also change the delta after this loop.
+                    maxNewResidual = evaluateResidual(xNew, FNew)
+
+                    // Calculate new norm:
+                    var newNorm = 0.0
+                    for (i in 0 until size) {
+                        val value = FNew.get(i)
+                        newNorm += value * value
+                    }
+
+                    // Armijo–Goldstein condition:
+                    if (newNorm <= (1.0 - lineSearchC * alpha) * initialResidualNorm) {
+                        break
+                    }
+
+                    // Reduce the step size:
+                    alpha *= lineSearchReduction
+                }
+
+                lastMaxResidual = maxNewResidual
+
+                // Apply alpha to the delta for Broyden:
+                for (i in 0 until size) {
+                    delta[i] *= alpha
+                }
+
+                // If the line search didn't find a value that satisfied its exit condition, then our Jacobian might be bad.
+                // We will recompute it below based on the new residual and the previous one we stored.
+                var deltaMax = 0.0
+                var deltaNorm = 0.0 // Used for Broyden below.
+
+                for (i in 0 until size) {
+                    val dx = delta.get(i) // Doesn't apply alpha:
+                    deltaNorm += dx * dx
+
+                    val magnitude = abs(dx)
+                    if (magnitude > deltaMax){
+                        deltaMax = magnitude
+                    }
+                }
+
+                lastMaxDelta = deltaMax
+
+                /**
+                 * Convergence check.
+                 * The residual check is solid, but the delta check is a bit suspicious.
+                 * It might be worth it to build a counter that measures how many consecutive steps resulted in the delta being low,
+                 * and only then apply the criterion.
+                 * */
+                if (maxNewResidual <= simulation.powerSourceResidualTolerance || deltaMax <= simulation.powerSourceDeltaTolerance) {
+                    // Accept xNew and copy into devices:
+                    for (i in 0 until size) {
+                        simulation.powerSources[i].nortonCurrent = xNew[i]
+                    }
+
+                    return iterations
+                }
+
+                if(lastMaxResidual >= previousResidual) {
+                    // The residual increased or convergence is stalling.
+                    // The Broyden loop is likely diverging.
+                    // Forces a recompute:
+                    requestJacobianReset()
+                }
+
+                /**
+                 * Updates the Jacobian (Quasi-Newton) if we are not going to recompute it exactly on the next iteration:
+                 * */
+                if(!recomputeJacobian && ((jacobianReuseCount + 1) % simulation.powerSourceJacobianRecomputeInterval != 0)) {
+                    // Broyden's method to update the Jacobian:
+
+                    /**
+                     * As the king of solvers, Broyden's Method, faced the Short-Circuited [PowerSource], Broyden asked the generator: "Are you convergent because your delta is small, or is your delta small because you are convergent?"
+                     * The PowerSource simply set its targetPower to 10000W.
+                     * Broyden began opening his domain: "Malevolent Jacobian!" He analytically computed the derivatives, cleaving the residual function into a linear system to solve for the step delta.
+                     * However, the [PowerSource]'s potential V was clamped to 0.0 by the short.
+                     * The derivative d(Power_Actual) / d(I_Norton) was zero. The Jacobian was singular.
+                     * As the solver tried to divide -targetPower by zero, the [PowerSource] simply stated: "Stand proud, you are strong. But with V=0... Nah, I'd win."
+                     * Broyden's LU factorization crumbled as the delta vector exploded to Infinity. In its dying moment, the [PowerSourceSystem] uttered the phrase: "With this treasure I summon... on circuits with player-made shorts, always bet on R_Series!"
+                     * The [PowerSourceSolverException] was trivially caught. And those who pioneered the techniques of MNA, the one who formalized the companion model, they would all bear witness to the bare flesh of the one who is free.
+                     * To the one who left it all behind and his overwhelming stability!
+                     * */
+                    if (deltaNorm > 1e-9) {
+                        // Update H (stored in J) using the "good" Broyden formula derived from the J update via Sherman-Morrison:
+
+                        for (i in 0 until size) {
+                            yMinusJs.set(i, FNew.get(i) - F.get(i))
+                        }
+
+                        CommonOps_DDRM.mult(H, yMinusJs, Js)
+
+                        val sT_Hy = CommonOps_DDRM.dot(delta, Js)
+
+                        if (abs(sT_Hy) > 1e-9) {
+                            for (i in 0 until size) {
+                                yMinusJs.set(i, delta.get(i) - Js.get(i))
+                            }
+
+                            CommonOps_DDRM.multTransA(delta, H, sT_H)
+
+                            val recip = 1.0 / sT_Hy
+                            for (i in 0 until size) {
+                                val ui = yMinusJs.get(i)
+                                for (j in 0 until size) {
+                                    val vTj = sT_H.get(j)
+                                    H.add(i, j, recip * ui * vTj)
+                                }
+                            }
+                        }
+                        else {
+                            requestJacobianReset()
+                        }
+                    }
+                    else {
+                        // The norm is too small. The update will be unstable.
+                        requestJacobianReset()
+                    }
+                }
+
+                for (i in 0 until size) {
+                    x[i] = xNew[i]
+                }
+
+                for (i in 0 until size) {
+                    F.set(i, 0, FNew.get(i, 0))
+                }
+            }
+
+            // Did not converge. GG.
+            throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.DidNotConverge)
+        }
+    }
+
+    /**
+     *
      *
      * At each step, `J × δ = -F` is solved for `δ`, which is the increment applied (after damping) to the unknown Norton currents.
      * `F` is the residual vector and `J` is the Jacobian of the system.
@@ -730,7 +1325,8 @@ class ElectricalSimulation(
     class PowerSourceSystem(val simulation: ElectricalSimulation) {
         private val size = simulation.powerSources.size
         /**
-         * The (approximate) Jacobian:
+         * The (approximate) Jacobian. It's the result of a direct compute. It is not updated.
+         * Only the inverse Jacobian is updated.
          * */
         internal val J = DMatrixRMaj(size, size)
         /**
@@ -776,6 +1372,9 @@ class ElectricalSimulation(
             private set
 
         var lastMaxDelta = 0.0
+            private set
+
+        var lastForceJacobianResets = 0
             private set
 
         /**
@@ -1111,6 +1710,12 @@ class ElectricalSimulation(
              * This is done because the Jacobian from Broyden might be causing slow convergence.
              * */
             var jacobianReuseCount = 0
+            lastForceJacobianResets = 0
+
+            fun requestJacobianReset() {
+                lastForceJacobianResets++
+                recomputeJacobian = true
+            }
 
             while (iterations < simulation.powerSourceMaxIterations) {
                 iterations++
@@ -1232,7 +1837,7 @@ class ElectricalSimulation(
                     // The residual increased or convergence is stalling.
                     // The Broyden loop is likely diverging.
                     // Forces a recompute:
-                    recomputeJacobian = true
+                    requestJacobianReset()
                 }
 
                 /**
@@ -1272,7 +1877,7 @@ class ElectricalSimulation(
                     }
                     else {
                         // The norm is too small. The update will be unstable.
-                        recomputeJacobian = true
+                        requestJacobianReset()
                     }
                 }
 
@@ -1404,7 +2009,7 @@ class ElectricalSimulation(
             "Circuit is floating. A node should be grounded implicitly!"
         }
 
-        groundNode = ElectricalNode(ElectricalNode.GROUND_ID, groundedPins.toTypedArray())
+        groundNode = ElectricalNode(GROUND_ID, groundedPins.toTypedArray())
 
         groundedPins.forEach { pin ->
             pin.setNode(groundNode)
@@ -1505,12 +2110,12 @@ class ElectricalSimulation(
     /**
      * Coupling solver iteration count (in normal mode).
      * */
-    var powerDeviceMaxOuterLoopIterations = 10
+    var powerDeviceMaxOuterLoopIterations = 64
 
     /**
      * Coupling solver iteration count when some power consumers are generating power.
      * */
-    var powerDeviceMaxOuterLoopIterationsConsumerViolation = 100
+    var powerDeviceMaxOuterLoopIterationsConsumerViolation = 128
 
     /**
      * If two successive solves yield a maximum delta (for both the consumers and the sources) less than [powerDeviceOuterLoopTolerance], the outer loop exits early.
@@ -1567,6 +2172,9 @@ class ElectricalSimulation(
     var lastPowerSourceSystemEvaluations = 0
         private set
 
+    var lastPowerSourceForceJacobianResets = 0
+        private set
+
     /**
      * The (absolute) max residual from the nonlinear solver in the last step (not the norm of the residual vector).
      * */
@@ -1592,6 +2200,7 @@ class ElectricalSimulation(
         var powerSourceTime = Quantity(0.0, SECOND)
         var powerSourceIterations = 0
         var powerSourceSystemEvaluations = 0
+        var powerSourceForceJacobianResets = 0
 
         /**
          * Executes one step of the relaxation solver.
@@ -1612,6 +2221,7 @@ class ElectricalSimulation(
                     powerSourceIterations += system.solve()
                     powerSourceSystemEvaluations += system.lastSystemEvaluations
                     sourceDelta = system.lastMaxDelta
+                    powerSourceForceJacobianResets += system.lastForceJacobianResets
                 }
             }
 
@@ -1654,6 +2264,7 @@ class ElectricalSimulation(
         lastPowerSourceTime = powerSourceTime
         lastPowerSourceIterationCount = powerSourceIterations
         lastPowerSourceSystemEvaluations = powerSourceSystemEvaluations
+        lastPowerSourceForceJacobianResets = powerSourceForceJacobianResets
     }
 
     /**

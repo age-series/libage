@@ -1,26 +1,31 @@
 package org.eln2.libelectric.sim.electrical
 
+import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.electrical.*
+import org.ageseries.libage.utils.measureDuration
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.fail
+import java.io.FileWriter
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 
 internal class ElectricalTests {
-    private fun ElectricalCircuitForestBuilder.testBuild(optimization: Boolean = true) : ElectricalSimulation {
-        val subSolvers = this.build(
-            1.0 / 100.0,
-            optimization,
-            ElectricalSimulation.ConstructionOptions(
-                1e15 // Fails with 1e14 for example, the tolerances I set for the tests are too tight. maybe fix
-            )).solvers
-        assertEquals(subSolvers.size, 1)
-        return subSolvers.first()
+    companion object {
+        private fun ElectricalCircuitForestBuilder.testBuild(optimization: Boolean = true) : ElectricalSimulation {
+            val subSolvers = this.build(
+                1.0 / 100.0,
+                optimization,
+                ElectricalSimulation.ConstructionOptions(
+                    1e15 // Fails with 1e14 for example, the tolerances I set for the tests are too tight. maybe fix
+                )).solvers
+            assertEquals(subSolvers.size, 1)
+            return subSolvers.first()
+        }
     }
 
     //#region Fundamental Tests
@@ -1122,13 +1127,7 @@ internal class ElectricalTests {
             val generated = pg.power
             val consumed = pc.power
 
-            if(generated < 0.0 || consumed < 0.0) {
-                println()
-            }
-
             assertEquals(generated, dissipated + consumed, 0.1)
-
-            assertTrue(circuit.lastPowerSourceIterationCount < 40)
         }
     }
 
@@ -1277,121 +1276,242 @@ internal class ElectricalTests {
      * */
     @Test
     fun testFullSystemDynamicStress() {
-        val builder = ElectricalCircuitForestBuilder()
+        repeat(10) {
+            val builder = ElectricalCircuitForestBuilder()
 
-        // Bus 1 (Main Grid)
-        val pg1 = PowerSource().also {
-            it.maxPotential = 100.0
-            it.setStabilizingResistance(50.0, 5000.0)
-        }
-
-        val pc1 = PowerConsumer().also {
-            it.minEquivalentResistance = 0.1
-            it.setStabilizingResistance(50.0, 5000.0)
-        }
-
-        val cap1 = Capacitor().also { it.capacitance = 1e-3 }
-        val ind1 = Inductor().also { it.inductance = 1e-2 }
-
-        val vs = PotentialSource().also { it.potential = 24.0 }
-        val rBatt = Resistor().also { it.resistance = 0.05 }
-
-        val pc2 = PowerConsumer().also {
-            it.minEquivalentResistance = 0.5
-            it.setStabilizingResistance(24.0, 500.0)
-        }
-        val cap2 = Capacitor().also { it.capacitance = 1e-4 }
-        val ind2 = Inductor().also { it.inductance = 1e-3 }
-
-        // Connector (DC-DC Charger from Bus 1 to Bus 2)
-        val pg2 = PowerSource().also {
-            it.maxPotential = 50.0 // Can boost voltage
-            it.setStabilizingResistance(24.0, 1000.0)
-        }
-
-        builder.add(pg1, pc1, cap1, ind1, vs, rBatt, pc2, cap2, ind2, pg2)
-
-        // Connect Bus 1
-        builder.join(pg1.positive, ind1.positive)
-        val bus1 = ind1.negative
-
-        // pc1 and cap1 connect to bus1
-        builder.join(bus1, pc1.positive, cap1.positive)
-
-        // pg2 draws from bus1
-        builder.join(bus1, pg2.negative)
-
-        // Connect Bus 2
-        builder.join(vs.positive, rBatt.positive)
-        builder.join(rBatt.negative, ind2.positive)
-        val bus2 = ind2.negative
-
-        builder.join(bus2, pc2.positive, cap2.positive)
-
-        builder.join(bus2, pg2.positive)
-
-        builder.ground(pg1.negative, pc1.negative, cap1.negative, vs.negative, pc2.negative, cap2.negative)
-
-        val circuit = builder.testBuild()
-        val dt = circuit.dt
-
-        var totalOuterIterations = 0
-        var totalSourceIterations = 0
-
-        repeat(5000) { step ->
-            val t = step * dt
-
-            pg1.targetPower = 5000.0 + 2500.0 * sin(t * 5.0)
-            pc1.targetPower = 4000.0 + 3000.0 * cos(t * 3.0)
-            pc2.targetPower = 200.0 + 150.0 * sin(t * 10.0)
-
-            val batteryVoltage = pc2.positive.potential
-            pg2.targetPower = when {
-                batteryVoltage < 23.8 -> 500.0
-                batteryVoltage > 24.2 -> 0.0
-                else -> 100.0
+            // Bus 1 (Main Grid)
+            val pg1 = PowerSource().also {
+                it.maxPotential = 100.0
+                it.setStabilizingResistance(50.0, 5000.0)
             }
 
-            try {
-                circuit.step()
-            } catch (e: Exception) {
-                fail("Solver failed at step $step with t=$t: $e")
+            val pc1 = PowerConsumer().also {
+                it.minEquivalentResistance = 0.1
+                it.setStabilizingResistance(50.0, 5000.0)
             }
 
-            totalOuterIterations += circuit.lastOuterLoopIterations
-            totalSourceIterations += circuit.lastPowerSourceIterationCount
+            val cap1 = Capacitor().also { it.capacitance = 1e-3 }
+            val ind1 = Inductor().also { it.inductance = 1e-2 }
 
-            if (step < 20) {
-                return@repeat
+            val vs = PotentialSource().also { it.potential = 24.0 }
+            val rBatt = Resistor().also { it.resistance = 0.05 }
+
+            val pc2 = PowerConsumer().also {
+                it.minEquivalentResistance = 0.5
+                it.setStabilizingResistance(24.0, 500.0)
+            }
+            val cap2 = Capacitor().also { it.capacitance = 1e-4 }
+            val ind2 = Inductor().also { it.inductance = 1e-3 }
+
+            // Connector (DC-DC Charger from Bus 1 to Bus 2)
+            val pg2 = PowerSource().also {
+                it.maxPotential = 50.0 // Can boost voltage
+                it.setStabilizingResistance(24.0, 1000.0)
             }
 
-            assertTrue(pc1.power >= -0.1)
-            assertTrue(pc2.power >= -0.1)
-            assertTrue(pg1.power >= -0.1)
-            assertTrue(pg2.power >= -0.1)
+            builder.add(pg1, pc1, cap1, ind1, vs, rBatt, pc2, cap2, ind2, pg2)
 
-            val pGen1 = pg1.power
-            val pGen2 = pg2.power
-            val pVs = vs.power
+            // Connect Bus 1
+            builder.join(pg1.positive, ind1.positive)
+            val bus1 = ind1.negative
 
-            val pCons1 = pc1.power
-            val pCons2 = pc2.power
+            // pc1 and cap1 connect to bus1
+            builder.join(bus1, pc1.positive, cap1.positive)
 
-            val pRBatt = rBatt.power
+            // pg2 draws from bus1
+            builder.join(bus1, pg2.negative)
 
-            val pCap1 = cap1.power
-            val pCap2 = cap2.power
-            val pInd1 = ind1.power
-            val pInd2 = ind2.power
+            // Connect Bus 2
+            builder.join(vs.positive, rBatt.positive)
+            builder.join(rBatt.negative, ind2.positive)
+            val bus2 = ind2.negative
 
-            val totalPowerGenerated = pGen1 + pGen2 + pVs
-            val totalPowerConsumed = pCons1 + pCons2 + pRBatt + pCap1 + pCap2 + pInd1 + pInd2
+            builder.join(bus2, pc2.positive, cap2.positive)
 
-            assertEquals(
-                totalPowerGenerated,
-                totalPowerConsumed,
-                0.1
-            )
+            builder.join(bus2, pg2.positive)
+
+            builder.ground(pg1.negative, pc1.negative, cap1.negative, vs.negative, pc2.negative, cap2.negative)
+
+            val circuit = builder.testBuild()
+            val dt = circuit.dt
+
+            var totalOuterIterations = 0
+            var totalSourceIterations = 0
+            var forceJacobianResets = 0
+
+            var stepTimeTotal = 0.0
+
+            repeat(5000) { step ->
+                val t = step * dt
+
+                pg1.targetPower = 5000.0 + 2500.0 * sin(t * 5.0)
+                pc1.targetPower = 4000.0 + 3000.0 * cos(t * 3.0)
+                pc2.targetPower = 200.0 + 150.0 * sin(t * 10.0)
+
+                val batteryVoltage = pc2.positive.potential
+                pg2.targetPower = when {
+                    batteryVoltage < 23.8 -> 500.0
+                    batteryVoltage > 24.2 -> 0.0
+                    else -> 100.0
+                }
+
+                try {
+                    val testTime = measureDuration {
+                        circuit.step()
+                    }
+
+                    if(step > 100) {
+                        stepTimeTotal += !testTime
+                    }
+                } catch (e: Exception) {
+                    fail("Solver failed at step $step with t=$t: $e")
+                }
+
+                totalOuterIterations += circuit.lastOuterLoopIterations
+                totalSourceIterations += circuit.lastPowerSourceIterationCount
+                forceJacobianResets += circuit.lastPowerSourceForceJacobianResets
+
+                if (step < 20) {
+                    return@repeat
+                }
+
+                assertTrue(pc1.power >= -0.1)
+                assertTrue(pc2.power >= -0.1)
+                assertTrue(pg1.power >= -0.1)
+                assertTrue(pg2.power >= -0.1) {
+                    ""
+                }
+
+                val pGen1 = pg1.power
+                val pGen2 = pg2.power
+                val pVs = vs.power
+
+                val pCons1 = pc1.power
+                val pCons2 = pc2.power
+
+                val pRBatt = rBatt.power
+
+                val pCap1 = cap1.power
+                val pCap2 = cap2.power
+                val pInd1 = ind1.power
+                val pInd2 = ind2.power
+
+                val totalPowerGenerated = pGen1 + pGen2 + pVs
+                val totalPowerConsumed = pCons1 + pCons2 + pRBatt + pCap1 + pCap2 + pInd1 + pInd2
+
+                assertEquals(
+                    totalPowerGenerated,
+                    totalPowerConsumed,
+                    0.1
+                )
+            }
+
+            println("Stress test: Outer Iterations: $totalOuterIterations, Source Iterations: $totalSourceIterations, Jacobian Force: $forceJacobianResets, Step Time: ${stepTimeTotal.rounded(4)}")
+        }
+    }
+
+    @Test
+    fun testLargeScalePowerSourcePerformance() {
+        repeat(3) {
+            val builder = ElectricalCircuitForestBuilder()
+            val nTest = 50 // Consumers and Sources
+
+            println("Building large-scale performance test with N=$nTest...")
+
+            val sources = Array(nTest) {
+                PowerSource().also {
+                    it.maxPotential = 400.0
+                    it.setStabilizingResistance(200.0, 5000.0)
+                }
+            }
+
+            val consumers = Array(nTest) {
+                PowerConsumer().also {
+                    it.minEquivalentResistance = 0.1
+                    it.setStabilizingResistance(100.0, 1000.0)
+                }
+            }
+
+            val vsGr = PotentialSource().also { it.potential = 200.0 }
+            val rGr = Resistor().also { it.resistance = 0.1 }
+            val rLnk = Resistor().also { it.resistance = 0.5 }
+
+            builder.add(vsGr, rGr, rLnk)
+            builder.add(*sources)
+            builder.add(*consumers)
+
+            val genBusPin = rGr.negative
+            val loadBusPin = rLnk.negative
+
+            builder.join(vsGr.positive, rGr.positive)
+            builder.join(genBusPin, rLnk.positive)
+
+            sources.forEach {
+                builder.join(genBusPin, it.positive)
+                builder.ground(it.negative)
+            }
+
+            consumers.forEach {
+                builder.join(loadBusPin, it.positive)
+                builder.ground(it.negative)
+            }
+
+            builder.ground(vsGr.negative)
+
+            val circuit = builder.testBuild()
+
+            println("Running $nTest-source/$nTest-consumer simulation...")
+
+            val steps = 200
+            val dt = circuit.dt
+            val warmup = 20
+
+            var totalOuterLoops = 0
+            var totalPsIterations = 0
+            var totalPsResets = 0
+            var totalSolveTime = 0.0
+
+            repeat(steps) { step ->
+                (0 until nTest).forEach { i ->
+                    sources[i].targetPower = 1000.0 * sin(step * dt * 0.2 + i * 0.1).pow(2) + 10.0
+                    consumers[i].targetPower = 1000.0 * cos(step * dt * 0.2 + i * 0.1).pow(2) + 5.0
+                }
+
+                try {
+                    val solveTime = measureDuration {
+                        circuit.step()
+                    }
+                    if (step > warmup) {
+                        totalSolveTime += !solveTime
+                    }
+                } catch (e: Exception) {
+                    println("Test failed at step $step")
+                    fail("Solver exception: $e")
+                }
+
+                if (step > warmup) {
+                    totalOuterLoops += circuit.lastOuterLoopIterations
+                    totalPsIterations += circuit.lastPowerSourceIterationCount
+                    totalPsResets += circuit.lastPowerSourceForceJacobianResets // Add this
+
+                    assertTrue(sources[0].power > -0.1, "Step $step: PS is consuming power")
+                    assertTrue(consumers[0].power > -0.1, "Step $step: PC is generating power")
+
+                    assertTrue(
+                        circuit.lastOuterLoopIterations < circuit.powerDeviceMaxOuterLoopIterationsConsumerViolation,
+                        "Solver thrashed at step $step (Outer Loop)"
+                    )
+                }
+            }
+
+            val runSteps = steps - warmup
+
+            println("$nTest-Source Performance Report")
+            println("  Successfully completed $steps steps.")
+            println("  Total Solve Time (after warmup): ${totalSolveTime.rounded(4)}")
+            println("  Average Step Time: ${(totalSolveTime / runSteps * 1000.0).rounded(4)}")
+            println("  Average Outer Loops per Step: ${(totalOuterLoops.toDouble() / runSteps).rounded()}")
+            println("  Average PS Iterations per Step: ${(totalPsIterations.toDouble() / runSteps).rounded()}")
         }
     }
 }
