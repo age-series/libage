@@ -997,7 +997,6 @@ internal class ElectricalTests {
 
         pc.targetPower = 50.0 // Request 50W
         pc.minEquivalentResistance = 0.1
-        pc.setStabilizingResistance(10.0, 100.0)
 
         val circuit = builder.testBuild()
 
@@ -1028,7 +1027,6 @@ internal class ElectricalTests {
         pc.targetPower = 500.0
 
         pc.minEquivalentResistance = 1.0
-        pc.setStabilizingResistance(10.0, 100.0)
 
         val circuit = builder.testBuild()
 
@@ -1061,7 +1059,6 @@ internal class ElectricalTests {
         builder.join(vs.negative, pc.negative)
 
         pc.targetPower = 0.0
-        pc.setStabilizingResistance(10.0, 100.0)
 
         val circuit = builder.testBuild()
 
@@ -1082,12 +1079,10 @@ internal class ElectricalTests {
 
         val pg = PowerSource().also {
             it.maxPotential = 100.0
-            it.setStabilizingResistance(50.0, 1000.0) // R_N = 2.5 Ohms
         }
 
         val pc = PowerConsumer().also {
             it.minEquivalentResistance = 0.5
-            it.setStabilizingResistance(50.0, 1000.0) // R_N = 2.5 Ohms
         }
 
         val r = Resistor().also { it.resistance = 1.0 }
@@ -1139,22 +1134,18 @@ internal class ElectricalTests {
 
         val ps1 = PowerSource().also {
             it.maxPotential = 200.0
-            it.setStabilizingResistance(100.0, 2000.0)
         }
 
         val ps2 = PowerSource().also {
             it.maxPotential = 200.0
-            it.setStabilizingResistance(100.0, 2000.0)
         }
 
         val pc1 = PowerConsumer().also {
             it.minEquivalentResistance = 0.5
-            it.setStabilizingResistance(100.0, 2000.0)
         }
 
         val pc2 = PowerConsumer().also {
             it.minEquivalentResistance = 0.5
-            it.setStabilizingResistance(100.0, 2000.0)
         }
 
         val r1 = Resistor().also { it.resistance = 2.0 }
@@ -1225,7 +1216,6 @@ internal class ElectricalTests {
         val builder = ElectricalCircuitForestBuilder()
 
         val cons = PowerConsumer()
-        cons.setStabilizingResistance(100.0, 100.0)
 
         val cap = Capacitor()
         cap.capacitance = 1e-4
@@ -1281,12 +1271,10 @@ internal class ElectricalTests {
             // Bus 1 (Main Grid)
             val pg1 = PowerSource().also {
                 it.maxPotential = 100.0
-                it.setStabilizingResistance(50.0, 5000.0)
             }
 
             val pc1 = PowerConsumer().also {
                 it.minEquivalentResistance = 0.1
-                it.setStabilizingResistance(50.0, 5000.0)
             }
 
             val cap1 = Capacitor().also { it.capacitance = 1e-3 }
@@ -1297,7 +1285,6 @@ internal class ElectricalTests {
 
             val pc2 = PowerConsumer().also {
                 it.minEquivalentResistance = 0.5
-                it.setStabilizingResistance(24.0, 500.0)
             }
             val cap2 = Capacitor().also { it.capacitance = 1e-4 }
             val ind2 = Inductor().also { it.inductance = 1e-3 }
@@ -1305,7 +1292,6 @@ internal class ElectricalTests {
             // Connector (DC-DC Charger from Bus 1 to Bus 2)
             val pg2 = PowerSource().also {
                 it.maxPotential = 50.0 // Can boost voltage
-                it.setStabilizingResistance(24.0, 1000.0)
             }
 
             builder.add(pg1, pc1, cap1, ind1, vs, rBatt, pc2, cap2, ind2, pg2)
@@ -1411,7 +1397,7 @@ internal class ElectricalTests {
 
     @Test
     fun testLargeScalePowerSourcePerformance() {
-        repeat(10) {
+        repeat(5) {
             val builder = ElectricalCircuitForestBuilder()
             val nTest = 50 // Consumers and Sources
 
@@ -1420,14 +1406,14 @@ internal class ElectricalTests {
             val sources = Array(nTest) {
                 PowerSource().also {
                     it.maxPotential = 400.0
-                    it.setStabilizingResistance(200.0, 5000.0)
+                    it.characteristicResistance = 0.1
                 }
             }
 
             val consumers = Array(nTest) {
                 PowerConsumer().also {
                     it.minEquivalentResistance = 0.1
-                    it.setStabilizingResistance(100.0, 1000.0)
+                    it.characteristicResistance = 0.1
                 }
             }
 

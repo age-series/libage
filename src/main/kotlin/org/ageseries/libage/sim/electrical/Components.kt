@@ -948,23 +948,10 @@ class LinearDiode : Resistor() {
  * */
 abstract class PowerDevice : NortonSystem() {
     /**
-     * Computes and sets *some* resistance for the Norton system.
-     * This resistance is a characteristic resistance, that sort of plays well.
-     * **Setting this sets [characteristicResistance], which needs a matrix re-factor!**
-     *
-     * I recommend calling this once, after you construct your device, with the expected operating parameters of the device.
-     * */
-    fun setStabilizingResistance(expectedPotential: Double, expectedPower: Double) {
-        characteristicResistance = if(expectedPower.approxEq(0.0) || expectedPotential.approxEq(0.0)) {
-            ElectricalSimulation.MAX_RESISTANCE
-        } else {
-            (expectedPotential * expectedPotential / expectedPower).coerceIn(ElectricalSimulation.MIN_RESISTANCE, ElectricalSimulation.MAX_RESISTANCE)
-        }
-    }
-
-    /**
      * The stabilizing resistance of the Norton system.
-     * Also consider using [setStabilizingResistance].
+     * The smaller it is, the stiffer the problem.
+     * There is a sweet spot. I recommend leaving it set to `1` or `0.1`.
+     * If you work with very high potentials, you might want to increase it a little.
      * */
     var characteristicResistance: Double
         get() = componentValue

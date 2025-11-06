@@ -416,6 +416,8 @@ class ElectricalSimulation(
     var constructed = false
         private set
 
+    //#region Solvers
+
     /**
      * Utility class for creating and manipulating the MNA matrices.
      * Has methods for stamping conductance, potential sources, and known currents and potentials.
@@ -633,7 +635,7 @@ class ElectricalSimulation(
 
     /**
      * Nonlinear Gauss-Seidel relaxation solver for the power consumers, which may converge over multiple outer-iteration steps.
-     * This is used as a one-step predictor. For more information about how this is used, see [solvePowerDevices].
+     * This is used as a one-step predictor, relaxed with the previous unknown current. For more information about how this is used, see [solvePowerDevices].
      * */
     class PowerConsumerSolver(val simulation: ElectricalSimulation) {
         @Suppress("UnnecessaryVariable")
@@ -714,7 +716,9 @@ class ElectricalSimulation(
     }
 
     /**
-     * Quasi-Newton solver for the power sources, using the rank-1 updates for the inverse Jacobian.
+     * Quasi-Newton solver for the power sources, using the Rank-1 updates for the inverse Jacobian.
+     * This solver was chosen because the changes in the outer loop are usually small enough that we can successfully carry the inverse Jacobian over many steps.
+     * This amortizes the cost of the full matrix-invert and gives us even more performance.
      * */
     @Suppress("PrivatePropertyName", "PropertyName")
     class PowerSourceSystemInverseBroyden(val simulation: ElectricalSimulation) {
@@ -724,7 +728,7 @@ class ElectricalSimulation(
          * */
         internal val H = DMatrixRMaj(size, size)
         /**
-         * Temporary matrix to hold the actual (non-inverted) Jacobian before it's inverted into J.
+         * Temporary matrix to hold the actual (non-inverted) Jacobian before it's inverted into H.
          */
         private val J = DMatrixRMaj(size, size)
         /**
@@ -749,23 +753,21 @@ class ElectricalSimulation(
         private val delta = DMatrixRMaj(size, 1)
         private val solver: LinearSolverDense<DMatrixRMaj> = LinearSolverFactory_DDRM.lu(size)
 
-        // Temporary storage:
-
-        // FDM:
+        // Temporary storage for finite difference fallback:
         private val f0 = DMatrixRMaj(size, 1)
         private val f1 = DMatrixRMaj(size, 1)
         private val x1 = DoubleArray(size)
 
-        // Step:
+        // Temporary storage for the step:
         private val x = DoubleArray(size)
         private val xNew = DoubleArray(size)
-        private val yMinusJs = DMatrixRMaj(size, 1) // Will be used for y, and (s - Hy)
-        private val Js = DMatrixRMaj(size, 1) // Will be used for H*y
+        private val yMinusJs = DMatrixRMaj(size, 1)
+        private val Js = DMatrixRMaj(size, 1)
 
-        // Line search:
+        // Line search options:
         var lineSearchC = 1e-4
         var lineSearchReduction = 0.5
-        var lineSearchMaxSteps = 10 // Each one is a new residual calculation. Better give up and update the Jacobian.
+        var lineSearchMaxSteps = 10
 
         var lastSystemEvaluations = 0
             private set
@@ -895,8 +897,9 @@ class ElectricalSimulation(
          * Evaluates the Jacobian using forward differences (N + 1 solves).
          * It uses a very simple adaptive step size.
          * This is the last fallback. If the solve fails here, we will throw.
+         * It also inverts the computed approximation.
          * */
-        private fun computeJacobianFallback() {
+        private fun computeJacobianAndInverseFallback() {
             J.zero()
             x.copyInto(x1)
             evaluateResidual(x, f0)
@@ -932,16 +935,17 @@ class ElectricalSimulation(
 
         /**
          * Computes the Jacobian analyically.
-         * It can be degenerate, so we use [computeJacobianFallback] if it happens.
+         * It can be degenerate, so we use [computeJacobianAndInverseFallback] if it happens.
+         * It also inverts the computed approximation.
          * */
         @Suppress("LocalVariableName", "SpellCheckingInspection", "NonAsciiCharacters")
-        private fun computeJacobian() {
+        private fun computeJacobianAndInverse() {
             J.zero()
 
             val size = simulation.powerSources.size
             val sensitivity = simulation.sensitivity.results
 
-            var norm = 0.0
+            var normSqr = 0.0
 
             // k is the column index (d/dINₖ)
             for (k in 0 until size) {
@@ -1004,30 +1008,29 @@ class ElectricalSimulation(
 
                     val dPt_dINₖ = dPt_dVᵢ * dVᵢ_dINₖ
                     val Jᵢₖ = dPt_dINₖ - dPa_dINₖ
-                    norm += Jᵢₖ * Jᵢₖ
+                    normSqr += Jᵢₖ * Jᵢₖ
 
-                    J.set(i, k, Jᵢₖ) // Compute into tempJ
+                    J.set(i, k, Jᵢₖ)
                 }
             }
 
-            if(norm.isNaN() || norm.isInfinite() || norm.approxEq(0.0, 1e-3)) {
+            if(normSqr.isNaN() || normSqr.isInfinite() || normSqr.approxEq(0.0, 1e-3)) {
                 // Seems dangerous.
-                computeJacobianFallback()
-                return // Fallback already inverted into J
+                computeJacobianAndInverseFallback() // Also inverts
+                return
             }
 
-            // Invert tempJ into J (which stores H)
             try {
                 if (!solver.setA(J)) {
                     // Decomposition failed, fallback
-                    computeJacobianFallback()
+                    computeJacobianAndInverseFallback() // Also inverts
                     return
                 }
 
                 solver.invert(H)
             } catch (e: Exception) {
                 // Inversion failed, fallback
-                computeJacobianFallback()
+                computeJacobianAndInverseFallback() // Also inverts
             }
         }
 
@@ -1038,10 +1041,12 @@ class ElectricalSimulation(
         private fun isDeltaValid() = !delta.data.any { it.isInfinite() || it.isNaN() }
 
         /**
-         * Solve for delta using: delta = H * (-F) (matrix multiplication). The return value will only check if the entries are NaN or infinity.
+         * Solve for delta using the inverse Jacobian.
+         * The return value will only check if the entries are NaN or infinity.
          * */
         private fun solveForDelta() : Boolean {
             CommonOps_DDRM.mult(H, MinusF, delta)
+
             return isDeltaValid()
         }
 
@@ -1055,7 +1060,8 @@ class ElectricalSimulation(
             lastSystemEvaluations = 0
 
             /**
-             * Loads the initial guess Norton currents:
+             * Loads the initial guess Norton currents.
+             * The initial guess is equal to the current value if the current value is not ~zero.
              * */
             for (i in 0 until size) {
                 x[i] = initialGuess(simulation.powerSources[i])
@@ -1092,7 +1098,7 @@ class ElectricalSimulation(
                 iterations++
 
                 if(recomputeJacobian) {
-                    computeJacobian() // This now computes J and inverts it into the 'J' field
+                    computeJacobianAndInverse()
                     recomputeJacobian = false
                     jacobianReuseCount = 0
                 }
@@ -1100,7 +1106,7 @@ class ElectricalSimulation(
                     jacobianReuseCount++
                     if(jacobianReuseCount % simulation.powerSourceJacobianRecomputeInterval == 0) {
                         // Convergence might be too slow:
-                        computeJacobian()
+                        computeJacobianAndInverse()
                         jacobianReuseCount = 0
                     }
                 }
@@ -1109,23 +1115,23 @@ class ElectricalSimulation(
                  * The (square) norm of the residual at this timestep.
                  * Used for the line search later on, to compare this previous residual with the one obtained after the update.
                  * */
-                var initialResidualNorm = 0.0
+                var initialResidualNormSqr = 0.0
 
                 // Negate F and calculate the residual's norm:
                 for (i in 0 until size){
                     val value = F.get(i)
-                    initialResidualNorm += value * value
+                    initialResidualNormSqr += value * value
                     MinusF.set(i, -value)
                 }
 
                 if(!solveForDelta()) {
                     // Discard and recompute:
-                    computeJacobian() // Recomputes J and inverts into H
+                    computeJacobianAndInverse()
                     jacobianReuseCount = 0
 
                     // Try the solve once more with the fresh H:
                     if (!solveForDelta()) {
-                        // If the new H also fails, the problem is truly ill-conditioned. GG.
+                        // If the new H also fails, the inputs are bad.
                         throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.CouldNotDetermineStep)
                     }
                 }
@@ -1154,7 +1160,7 @@ class ElectricalSimulation(
                     }
 
                     // Armijo–Goldstein condition:
-                    if (newNorm <= (1.0 - lineSearchC * alpha) * initialResidualNorm) {
+                    if (newNorm <= (1.0 - lineSearchC * alpha) * initialResidualNormSqr) {
                         break
                     }
 
@@ -1275,6 +1281,8 @@ class ElectricalSimulation(
             throw PowerSourceSolverException(simulation, PowerSourceSolverFailurePoint.DidNotConverge)
         }
     }
+
+    //#endregion
 
     /**
      * Options for hardening the simulation further.
@@ -1416,17 +1424,17 @@ class ElectricalSimulation(
         }
     }
 
-    var matrixChanged = false
-        private set
-
-    var knownsChanged = false
-        private set
-
     private fun validateUsage() {
         if(destroyed) {
             error("Cannot use electrical simulation after destroyed")
         }
     }
+
+    var matrixChanged = false
+        private set
+
+    var knownsChanged = false
+        private set
 
     internal fun setMatrixChanged() {
         matrixChanged = true
@@ -1489,14 +1497,15 @@ class ElectricalSimulation(
     //#region Power Device Solver Options
 
     /**
-     * Coupling solver iteration count (in normal mode).
+     * Coupling solver iteration count (in normal mode. See [powerDeviceMaxOuterLoopIterationsConsumerViolation]).
      * */
     var powerDeviceMaxOuterLoopIterations = 64
 
     /**
      * Coupling solver iteration count when some power consumers are generating power.
+     * This count should never ever be hit. We are being generous.
      * */
-    var powerDeviceMaxOuterLoopIterationsConsumerViolation = 128
+    var powerDeviceMaxOuterLoopIterationsConsumerViolation = 256
 
     /**
      * If two successive solves yield a maximum delta (for both the consumers and the sources) less than [powerDeviceOuterLoopTolerance], the outer loop exits early.
@@ -1510,7 +1519,7 @@ class ElectricalSimulation(
         private set
 
     /**
-     * The approximate time spent by the power consumer solver last step.
+     * The approximate total time spent by the power consumer solver in the last outer solve.
      * Most of these values should be accurate (GC usually shouldn't be happening during the solver loop, but it could).
      * */
     var lastPowerConsumerTime = Quantity(0.0, SECOND)
@@ -1518,9 +1527,10 @@ class ElectricalSimulation(
 
     /**
      * Max iterations the nonlinear solver for the power sources can take.
-     * Usually takes a few tens of iterations in bad cases (switching states), but normally it takes 1-5 iterations in a system whose values are evolving in a continuous manner.
+     * If the state changed a lot since the last step, can take 1-5 iterations in the first or first few steps of the outer loop, and takes 1-2 iterations in the remaining steps of the outer loop.
+     * It takes 0 steps (one residual evaluation, and instant exit) when in steady-state conditions.
      * */
-    var powerSourceMaxIterations = 512
+    var powerSourceMaxIterations = 256
 
     /**
      * How many times the solver is allowed to apply the Broyden update to the same Jacobian.
@@ -1530,39 +1540,32 @@ class ElectricalSimulation(
 
     /**
      * The max allowed power residual for the power sources.
+     * This value **an** exit condition **for the power source solver**. The outer loop might apply more iterations to the problem.
      * */
     var powerSourceResidualTolerance = 1e-4
 
     /**
      * Exit if the largest current delta is less than this tolerance for the power sources.
+     * This value **an** exit condition **for the power source solver**. The outer loop might apply more iterations to the problem.
      * */
     var powerSourceDeltaTolerance = 1e-4
 
     /**
-     * The number of iterations the nonlinear solver needed in the last step.
-     * If equal to [powerSourceMaxIterations], the system did not converge implicitly.
-     * If lower, it doesn't mean it converged (could have hit impossible conditions). Check the [lastPowerSourceMaxResidual].
-     * If it didn't converge, the sources are likely in a broken state.
+     * The number of iterations the nonlinear solver needed in the last coupled update (the sum of all the iterations taken in the outer loops).
      * */
     var lastPowerSourceIterationCount = 0
-        private set
-
-    /**
-     * The number of MNA solves the nonlinear system solver needed in the last step.
-     * */
-    var lastPowerSourceSystemEvaluations = 0
         private set
 
     var lastPowerSourceForceJacobianResets = 0
         private set
 
     /**
-     * The (absolute) max residual from the nonlinear solver in the last step (not the norm of the residual vector).
+     * The (absolute) max residual from the nonlinear solver in the last step of the last outer loop iteration. Not the norm of the residual vector.
      * */
     val lastPowerSourceMaxResidual get() = sourceSystem?.lastMaxResidual ?: 0.0
 
     /**
-     * The approximate time spent by the power source solver last step.
+     * The approximate total time spent by the power source solver in the last outer solve.
      * Most of these values should be accurate (GC usually shouldn't be happening during the solver loop, but it could).
      * */
     var lastPowerSourceTime = Quantity(0.0, SECOND)
@@ -1584,11 +1587,10 @@ class ElectricalSimulation(
         var powerConsumerTime = Quantity(0.0, SECOND)
         var powerSourceTime = Quantity(0.0, SECOND)
         var powerSourceIterations = 0
-        var powerSourceSystemEvaluations = 0
         var powerSourceForceJacobianResets = 0
 
         var lastConsumerDelta = Double.MAX_VALUE
-        var gaussSeidelRelaxation = 1.0
+        var gaussSeidelOverRelaxation = 1.0
 
         /**
          * Helps with more robust convergence detection.
@@ -1607,15 +1609,15 @@ class ElectricalSimulation(
 
             if(powerConsumers.isNotEmpty()) {
                 powerConsumerTime += measureDuration {
-                    consumerDelta = consumerSolver!!.grissessSeidelStep(gaussSeidelRelaxation)
+                    consumerDelta = consumerSolver!!.grissessSeidelStep(gaussSeidelOverRelaxation)
                 }
 
-                gaussSeidelRelaxation = if (consumerDelta < lastConsumerDelta) {
+                gaussSeidelOverRelaxation = if (consumerDelta < lastConsumerDelta) {
                     // Increase descent rate:
-                    min(gaussSeidelRelaxation * 1.05, 1.0)
+                    min(gaussSeidelOverRelaxation * 1.05, 1.0)
                 } else {
                     // Oscillating. Start dampening:
-                    max(gaussSeidelRelaxation * 0.75, 0.05)
+                    max(gaussSeidelOverRelaxation * 0.75, 0.05)
                 }
 
                 lastConsumerDelta = consumerDelta
@@ -1625,7 +1627,6 @@ class ElectricalSimulation(
                 powerSourceTime += measureDuration {
                     val system = sourceSystem!!
                     powerSourceIterations += system.solve(iterations == 1)
-                    powerSourceSystemEvaluations += system.lastSystemEvaluations
                     sourceDelta = system.lastMaxDelta
                     powerSourceForceJacobianResets += system.lastForceJacobianResets
                 }
@@ -1673,7 +1674,6 @@ class ElectricalSimulation(
         lastPowerConsumerTime = powerConsumerTime
         lastPowerSourceTime = powerSourceTime
         lastPowerSourceIterationCount = powerSourceIterations
-        lastPowerSourceSystemEvaluations = powerSourceSystemEvaluations
         lastPowerSourceForceJacobianResets = powerSourceForceJacobianResets
     }
 
