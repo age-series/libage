@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.fail
-import java.io.FileWriter
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
@@ -1412,7 +1411,7 @@ internal class ElectricalTests {
 
     @Test
     fun testLargeScalePowerSourcePerformance() {
-        repeat(3) {
+        repeat(10) {
             val builder = ElectricalCircuitForestBuilder()
             val nTest = 50 // Consumers and Sources
 
