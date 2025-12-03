@@ -912,8 +912,9 @@ class LinearDiode : Resistor() {
         val targetState = if (isInPositiveRegion != isConducting) {
             if (isInPositiveRegion) {
                 potential > hysteresisVoltage
-            } else {
-                potential < -hysteresisVoltage
+            }
+            else {
+                !(potential < -hysteresisVoltage)
             }
         }
         else {
@@ -956,6 +957,13 @@ abstract class PowerDevice : NortonSystem() {
     var characteristicResistance: Double
         get() = componentValue
         set(value) { componentValue = value }
+}
+
+/**
+ * Nonlinear device solved with successive over-relaxation.
+ * */
+interface SuccessiveOverRelaxationSolve {
+
 }
 
 /**
