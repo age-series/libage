@@ -74,7 +74,7 @@ val STANDARD_TEMPERATURE = Quantity(273.15, KELVIN)
  * @param energy The initial energy. Leave `null` to set it such that [temperature] is [STANDARD_TEMPERATURE].
  * @param mass The mass of the body.
  * */
-class ThermalMass(val material: Material, energy: Quantity<Energy>? = null, val mass: Quantity<Mass> = Quantity(1.0, KILOGRAM)) {
+class ThermalMass(var material: Material, energy: Quantity<Energy>? = null, var mass: Quantity<Mass> = Quantity(1.0, KILOGRAM)) {
     var energy: Quantity<Energy> = energy ?: Quantity(!STANDARD_TEMPERATURE * !mass * !material.specificHeat)
 
     /**
@@ -93,7 +93,7 @@ class ThermalMass(val material: Material, energy: Quantity<Energy>? = null, val 
         get() = temperatureAt(energy)
         set(value) { energy = Quantity(!value * !mass * !material.specificHeat, JOULE) }
 
-    override fun toString() = "<Thermal Mass $material m=${mass.classify()} E=${energy.classify()} T=${temperature.classify()}>"
+    override fun toString() = "ThermalMass[$material, ${mass.classify()}, ${energy.classify()}, ${temperature.classify()}]"
 }
 
 /**
