@@ -1,25 +1,19 @@
 package org.ageseries.libage.data
 
 /**
- * A class for using the Disjoint Sets "Union-Find" algorithm.
+ * Implementation of the Disjoint-Set data structure designed for use in conjunction with the Union-Find algorithm.
+ * It is intended to be extended by inheritors, where the term "Super" (akin to a **superclass**) clarifies its nature.
+ * To enhance usability, a *self-type parameter* ([Self]) has been integrated.
  *
- * There are two ways to use this:
+ * The [representative] can be retrieved as [Self], and the [union] operation readily accepts [Self].
+ * Essentially, inheritors can work with instances of their class without necessitating casting (unlike the old implementation).
  *
- * - Inherit from it, using the methods on the object itself;
- * - compose it into your class; or
- * - do both.
- *
- * Typical use case is as follows:
- *
- * 1. Choose your method above; for the former, the DisjointSet object is `this`; for the latter, substitute your field.
- * 2. Unify DisjointSets by calling [unite].
- * 3. Determine if two DisjointSets are in the same component by testing their [representative] for equality.
- * 4. Optionally, mutate the data on a DisjointSet subclass' representative, knowing that the mutations are visible from all DisjointSets with the same representative.
- *
- * Note that it is difficult to control which instance will ultimately *be* the representative; in the cases where it can't be avoided, [priority] can be used, but this is advisable only as a last resort (since it reduces the optimality of this algorithm).
+ * It's important to note that controlling which instance ultimately becomes the representative can be challenging.
+ * In cases where this is unavoidable, the [priority] parameter can be employed.
+ * However, it's advisable to use this option sparingly, as it compromises the optimality of the algorithm and should only be considered as a last resort.
 */
-open class DisjointSet {
-
+@Suppress("UNCHECKED_CAST") // Side effect of self parameter. Fine in our case.
+abstract class SuperDisjointSet<Self : SuperDisjointSet<Self>> {
     /**
      * The size of this tree; loosely, how many Sets have been merged, including transitively, with this one.
      *
@@ -32,7 +26,8 @@ open class DisjointSet {
      *
      * Following this recursively will lead to the [representative]. All representatives refer to themselves as their parent.
      */
-    var parent: DisjointSet = this
+    @Suppress("LeakingThis") // Fine in this case.
+    var parent: Self = this as Self
 
     /**
      * The priority of the merge. If set, this overrides the "merge by size" algorithm in [unite].
@@ -48,34 +43,65 @@ open class DisjointSet {
      *
      * This is implemented using the "Path splitting" algorithm.
      */
-    val representative: DisjointSet
+    val representative: Self
         get() {
-            var cur = this
-            while (cur.parent != cur) {
-                val next = cur.parent
-                cur.parent = next.parent
-                cur = next
+            var current = this
+
+            while (current.parent != current) {
+                val next = current.parent
+                current.parent = next.parent
+                current = next
             }
-            return cur
+
+            return current as Self
         }
 
     /**
-     * Unite this instance with another instance of DisjointSet.
+     * *Union operation*.
      *
      * After this is done, both this and [other] will have the same [representative] as each other (and as all other Sets with which they were previously united).
      *
      * This is implemented using the "by size" merge algorithm, adjusted for [priority].
      */
-    open fun unite(other: DisjointSet) {
-        val trep = representative
-        val orep = other.representative
-        if (trep == orep) return
-        val (bigger, smaller) = when {
-            trep.priority > orep.priority -> Pair(trep, orep)
-            orep.priority > trep.priority -> Pair(orep, trep)
-            else -> if (trep.size < orep.size) Pair(orep, trep) else Pair(trep, orep)
+    open fun unite(other: Self) {
+        val thisRep = representative
+        val otherRep = other.representative
+
+        if (thisRep == otherRep){
+            return
         }
+
+        val bigger: Self
+        val smaller: Self
+
+        // Override with priority:
+        if(thisRep.priority > otherRep.priority) {
+            bigger = thisRep
+            smaller = otherRep
+        }
+        else if(otherRep.priority > thisRep.priority) {
+            bigger = otherRep
+            smaller = thisRep
+        }
+        else {
+            // By size:
+            if (thisRep.size < otherRep.size) {
+                bigger = otherRep
+                smaller = thisRep
+            } else {
+                bigger = thisRep
+                smaller = otherRep
+            }
+        }
+
         smaller.parent = bigger.parent
         bigger.size += smaller.size
     }
 }
+
+/**
+ * Composable disjoint set, implemented as a [SuperDisjointSet].
+ * This implementation proves beneficial in specific algorithms where certain elements are partitioned using union-find.
+ * These elements might represent pure data or simply may not want or need to implement [SuperDisjointSet].
+ * */
+class DisjointSet(override var priority: Int = 0) : SuperDisjointSet<DisjointSet>() // *It also proves useful in unit tests.

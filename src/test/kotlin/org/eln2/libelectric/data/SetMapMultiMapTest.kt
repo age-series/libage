@@ -90,6 +90,19 @@ internal class SetMapMultiMapTest {
         assert(TEST_NONKEY !in map)
         assert(map[TEST_NONKEY].isEmpty())
     }
+
+    @Test
+    fun nonAllocatingContainment() {
+        arrayOf(
+            TEST_MAP.map { it.toPair() },
+            TEST_MULTIMAP,
+        ).forEach {
+            val map = makeImplementation(it)
+            assert(TEST_NONKEY !in map.keys)
+            assert(!map.contains(TEST_NONKEY))
+            assert(TEST_NONKEY !in map.keys)
+        }
+    }
 }
 
 internal class MutableSetMapMultiMapTest {
@@ -162,6 +175,19 @@ internal class MutableSetMapMultiMapTest {
 
         assert(TEST_NONKEY !in map)
         assert(map[TEST_NONKEY].isEmpty())
+    }
+
+    @Test
+    fun nonAllocatingContainment() {
+        arrayOf(
+            TEST_MAP.map { it.toPair() },
+            TEST_MULTIMAP,
+        ).forEach {
+            val map = makeImplementation(it)
+            assert(TEST_NONKEY !in map.keys)
+            assert(!map.contains(TEST_NONKEY))
+            assert(TEST_NONKEY !in map.keys)
+        }
     }
     // ------------ STOP PASTING HERE --------------
 
